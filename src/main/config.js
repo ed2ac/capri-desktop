@@ -47,6 +47,7 @@ const DEFAULTS = {
   chatty: 'normal',
   pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
   localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
+  workshopAuto: true, // her coding workshop window opens (in the background) when Claude starts a task
   projectsRoot: '~/dev', // where your code projects are in WSL, for her hands (tasks.js)
   taskModel: 'sonnet', // Claude's model for her tasks: 'sonnet', 'opus', 'auto' (Opus in code projects) or 'default'
   calendarUrl: '',   // your calendar's private ICS address (daily.js): only fetched, never sent anywhere else
@@ -58,6 +59,9 @@ const DEFAULTS = {
   cameraAsked: false,
   cameraLook: false, // now and then she looks at you through it and says something (a vision model: online if free)
   lockAway: false,   // her camera sees you gone 2 minutes, the PC idle: Windows locked (camera.js)
+  faceData: null,    // the faces she knows (faceid.js): encrypted numbers, never a picture
+  lockStrangers: false, // someone she doesn't know at your PC (and no one let them): Windows locked
+  faceAllow: [],     // who may use your PC when ("tomorrow my mom will use the PC"): [{ who, from, to }]
   earOn: false,      // she hears the room: sounds classified on this PC, never recorded (hearing.js)
   earAsked: false,
   wakeWord: true,    // with "Hear the room" on: say "Capri" and she listens (Vosk, offline)

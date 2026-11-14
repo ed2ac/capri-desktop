@@ -9,6 +9,7 @@
 import { fmt } from './util.js';
 import { TODO_ADD, TODO_LIST, TODO_DONE, TODO_CLEAR, ROUTINE, ROUTINE_LIST, ROUTINE_DEL, CAL_SET, CAL_ASK, LIMIT_SET, LIMIT_LIST, LIMIT_DEL, BIRTHDAY } from './daily.js';
 import { CAM_ASK } from './camera.js';
+import { FACE_ALLOW, FACE_WHEN, FACE_INTRO, FACE_LIST, FACE_CANCEL } from './faceid.js';
 const PLAY_ASK = /(?:vamos|bora|quer|vamo) (?:jogar|brincar)|joga(?:r)? (?:um )?(?:jogo|reflexo|comigo)|teste de reflexo|let'?s play|play (?:a game|with me)|on joue|jugamos|давай поиграем/i;
 
 const MB = 1024 ** 2;
@@ -140,6 +141,15 @@ export class Care {
       if (bday) return care('birthday', { day: bday[1], month: bday[2] });
       if (PLAY_ASK.test(text) && this.play) return care('play');
       if (CAM_ASK.test(text) && this.camera) return care('camera', { ask: text });
+      if (this.face) {
+        const allow = FACE_ALLOW.exec(text);
+        if (allow) return care('faceAllow', { op: 'add', who: allow[2], when: FACE_WHEN.exec(text)?.[1] || 'hoje' });
+        if (FACE_LIST.test(text)) return care('faceAllow', { op: 'list' });
+        const cancel = FACE_CANCEL.exec(text);
+        if (cancel) return care('faceAllow', { op: 'cancel', who: cancel[1] });
+        const intro = FACE_INTRO.exec(text);
+        if (intro && this.face.strangerFace) return care('faceIntro', { name: intro[1] });
+      }
       const routine = ROUTINE.exec(text);
       if (routine) return care('routine', { op: 'add', when: routine[1], hour: Number(routine[2]), minute: Number(routine[3] || 0), text: routine[4].replace(/^(?:e\s+)?(?:me\s+)?(?:lembra(?:r)?|avisa(?:r)?|manda(?:r)?|diz(?:er)?|fala(?:r)?|remind me|tell me)\s+(?:pra\s+|para\s+|de\s+|do\s+|da\s+|dos\s+|das\s+|que\s+|to\s+|of\s+|about\s+)?/i, '').replace(/[.!?]+$/, '').trim() });
       if (ROUTINE_LIST.test(text)) return care('routine', { op: 'list' });
@@ -231,6 +241,8 @@ export class Care {
       case 'limit': return this.daily.limitReply(asked);
       case 'birthday': return this.daily.birthdayReply(asked);
       case 'camera': return this.camera.lookNow(asked.ask);
+      case 'faceAllow': return this.face.allowReply(asked);
+      case 'faceIntro': return this.face.introduce(asked.name);
       case 'play': {
         // her minigame: the chat closes so you can click her
         setTimeout(() => { this.chat.close?.(); setTimeout(() => this.play.reflex(), 700); }, 1600);

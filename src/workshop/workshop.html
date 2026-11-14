@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <!-- Her coding workshop: what Claude is doing for you, its questions, its history, your plan's use.
+       Nothing from outside: no network, no Node, only what her main process sends. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oficina do Claude</title>
+  <link rel="stylesheet" href="workshop.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot" id="live"></span><h1 data-t="title">Oficina do Claude</h1></div>
+    <div class="meters" id="meters" aria-live="polite"></div>
+    <button class="ghost small" id="refresh" data-t="refresh" title="">Atualizar</button>
+  </header>
+
+  <main class="grid">
+    <section class="col main-col">
+      <div class="card" id="task-card">
+        <div class="empty" id="idle">
+          <p class="big" data-t="idle">Nenhuma tarefa agora.</p>
+          <p class="muted" data-t="idleHint">Peça no chat dela (“Capri, na pasta site no windows, faça…”) ou escreva aqui embaixo.</p>
+        </div>
+        <div id="task" hidden>
+          <div class="task-head">
+            <p class="prompt" id="prompt"></p>
+            <button class="danger" id="cancel" data-t="cancel">Cancelar</button>
+          </div>
+          <div class="facts">
+            <button class="chip link" id="dir" title=""></button>
+            <span class="chip" id="model"></span>
+            <span class="chip" id="clock">0:00</span>
+            <span class="chip" id="count"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="asks"></div>
+
+      <div class="card log-card">
+        <h2 data-t="steps">Passos</h2>
+        <ol class="log" id="log"></ol>
+      </div>
+    </section>
+
+    <aside class="col side-col">
+      <form class="card" id="new">
+        <h2 data-t="newTask">Nova tarefa</h2>
+        <textarea id="ask" rows="4" data-ph="askPh" placeholder="O que o Claude deve fazer?"></textarea>
+        <div class="row">
+          <button type="button" class="ghost" id="pick" data-t="pick">Escolher pasta…</button>
+          <span class="muted small-text" id="picked" data-t="shop">Na oficina dela</span>
+        </div>
+        <button type="submit" class="primary" id="go" data-t="go">Mandar pra Capri</button>
+      </form>
+
+      <div class="card">
+        <h2 data-t="history">Histórico</h2>
+        <ul class="history" id="history"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <script src="workshop.js"></script>
+</body>
+</html>

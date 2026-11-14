@@ -77,6 +77,9 @@ async function main() {
   await check('security checkup reads Windows', 'const r = await d.guard.checkupReply(); return r && r.line', (v) => typeof v === 'string' && v.length > 20);
   await check('face model loads (camera off)', "const B = new URL('../../', location.href).href; const { FilesetResolver, FaceLandmarker } = await import(B + 'node_modules/@mediapipe/tasks-vision/vision_bundle.mjs'); const f = await FilesetResolver.forVisionTasks(B + 'node_modules/@mediapipe/tasks-vision/wasm'); await FaceLandmarker.createFromOptions(f, { baseOptions: { modelAssetPath: B + 'assets/mediapipe/face_landmarker.task', delegate: 'CPU' }, runningMode: 'IMAGE' }); return 'ok'", (v) => v === 'ok');
   await check('sound model loads (microphone off)', "const B = new URL('../../', location.href).href; const { FilesetResolver, AudioClassifier } = await import(B + 'node_modules/@mediapipe/tasks-audio/audio_bundle.mjs'); const f = await FilesetResolver.forAudioTasks(B + 'node_modules/@mediapipe/tasks-audio/wasm'); const c = await AudioClassifier.createFromOptions(f, { baseOptions: { modelAssetPath: B + 'assets/mediapipe/yamnet.tflite' } }); const s = new Float32Array(48000).map((_, i) => 0.4 * Math.sin(2 * Math.PI * 1000 * i / 48000)); return c.classify(s, 48000)[0].classifications[0].categories[0].categoryName", (v) => /beep|sine|tone|whistle/i.test(v));
+  await check('face recognition loads, and finds nobody in a blank picture', "const api = await d.face.load(); const c = document.createElement('canvas'); c.width = 320; c.height = 240; c.getContext('2d').fillRect(0, 0, 320, 240); const r = await api.detectAllFaces(c, new api.TinyFaceDetectorOptions()).withFaceLandmarks(true).withFaceDescriptors(); const saved = await h.faceLoad(); return { found: r.length, store: saved === null || typeof saved === 'object' }", (v) => v.found === 0 && v.store, 180000);
+  await check('Claude\'s limit is read (free: Claude Code\'s /usage)', 'const u = await h.claudeUsage(); return u && u.rows.map((r) => r.key + ":" + r.pct).join(" ")', (v) => typeof v === 'string' && /session:\d+/.test(v), 90000);
+  await check('who may use the PC, asked in words', "const c = d.chat.care; const r = c.asked('amanhã minha mãe vai usar o pc', 3); return r ? [r.what, r.op, r.who, r.when].join('|') : (d.face ? 'no intent' : 'no face')", (v) => /^faceAllow\|add\|minha mãe\|amanhã$/.test(v));
   // the modal bug: a question of hers must stay where it is (she doesn't walk off with it) and close on a click
   await check('a question of hers stays put, and closes on a click', `
     d.capri.setMode('idle'); d.capri.busy = false; d.mic.asked = false;
@@ -92,6 +95,26 @@ async function main() {
     const realStart = d.mic.start.bind(d.mic); d.mic.start = async () => 'started';
     await d.mic.toggle({ asked: true }); d.guide.ask = real; d.mic.start = realStart; d.mic.asked = ${JSON.stringify(Boolean(original.micAsked))};
     return { asked };`, (v) => v.asked === false);
+
+  // her coding workshop: it opens, and shows the plan's use
+  await ev('h.openWorkshop(); await sleep(3000); return true');
+  {
+    const shop = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((p) => /workshop\.html/.test(p.url));
+    let v = { error: 'no workshop window' };
+    if (shop) {
+      const w = new WebSocket(shop.webSocketDebuggerUrl);
+      await new Promise((r) => { w.onopen = r; });
+      v = await new Promise((res) => {
+        w.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id === 1) res(d.result?.result?.value); };
+        w.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: "({ title: document.title, meters: document.getElementById('meters').textContent, idle: !document.getElementById('idle').hidden })", returnByValue: true } }));
+        setTimeout(() => res({ error: 'timeout' }), 10000);
+      });
+      w.close();
+    }
+    const pass = Boolean(v && !v.error && /Oficina|workshop/i.test(v.title) && /%/.test(v.meters));
+    results.push({ name: 'her coding workshop opens and shows the limit', pass, v });
+    console.log(`${pass ? 'ok  ' : 'FAIL'} her coding workshop opens and shows the limit${pass ? '' : `  → ${JSON.stringify(v).slice(0, 300)}`}`);
+  }
 
   // whatever was touched, as it was
   await ev(`await h.setConfig({ micAsked: ${JSON.stringify(original.micAsked ?? false)} }); return true`);

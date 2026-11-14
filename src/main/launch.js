@@ -291,11 +291,47 @@ function siteUrl(address) {
   }
 }
 
-async function site(address) {
-  const url = siteUrl(String(address || '').trim());
-  if (!url) return false;
-  await shell.openExternal(url.toString());
-  return true;
+// The browsers installed on this PC, as Windows registers them (StartMenuInternet, for you and for
+// everyone): { name, exe }. "Opera GX", "Google Chrome", "Firefox", "Brave", "Microsoft Edge"…
+let browserCache = null;
+async function browsers() {
+  if (browserCache && Date.now() - browserCache.at < CACHE_MS) return browserCache.items;
+  if (!WIN) return [];
+  const out = await powershell(
+    "$r = @(); foreach ($root in 'HKCU:\\SOFTWARE\\Clients\\StartMenuInternet', 'HKLM:\\SOFTWARE\\Clients\\StartMenuInternet', 'HKLM:\\SOFTWARE\\WOW6432Node\\Clients\\StartMenuInternet') { "
+    + "Get-ChildItem $root -EA SilentlyContinue | ForEach-Object { $c = (Get-ItemProperty (Join-Path $_.PSPath 'shell\\open\\command') -EA SilentlyContinue).'(default)'; "
+    + "if ($c) { $r += [pscustomobject]@{ name = (Get-ItemProperty $_.PSPath).'(default)'; key = $_.PSChildName; cmd = $c } } } }; $r | ConvertTo-Json -Compress",
+  ).catch(() => '');
+  const items = [];
+  for (const b of [].concat(out ? JSON.parse(out) : [])) {
+    const exe = (/^"([^"]+\.exe)"/i.exec(b.cmd) || /^(\S+\.exe)/i.exec(b.cmd) || [])[1];
+    if (exe && fs.existsSync(exe) && !items.some((i) => i.exe.toLowerCase() === exe.toLowerCase())) items.push({ name: b.name || b.key, exe });
+  }
+  browserCache = { at: Date.now(), items };
+  return items;
 }
 
-module.exports = { launchables, match, find, launch, media, music, youtube, roblox, site, siteUrl, risky };
+// The browser named ("opera", "chrome", "edge"…), if it's installed
+async function browser(wanted) {
+  const key = plain(wanted).replace(/[^a-z0-9]+/g, '');
+  if (key.length < 3) return null;
+  const all = await browsers();
+  const simple = (b) => plain(`${b.name} ${path.basename(b.exe, '.exe')}`).replace(/[^a-z0-9]+/g, '');
+  return all.find((b) => simple(b).includes(key)) || (key === 'edge' ? all.find((b) => /msedge/i.test(b.exe)) : null) || null;
+}
+
+// A website, in your default browser or in the one you named ("no opera"). { ok, browser } where
+// browser is the one it opened in, or null for the default one (also when the named one isn't here).
+async function site(address, inBrowser = null) {
+  const url = siteUrl(String(address || '').trim());
+  if (!url) return false;
+  const b = inBrowser ? await browser(inBrowser).catch(() => null) : null;
+  if (b) {
+    spawn(b.exe, [url.toString()], { detached: true, stdio: 'ignore' }).on('error', () => shell.openExternal(url.toString())).unref();
+    return { ok: true, browser: b.name };
+  }
+  await shell.openExternal(url.toString());
+  return { ok: true, browser: null, missing: inBrowser || null };
+}
+
+module.exports = { launchables, match, find, launch, media, music, youtube, roblox, site, siteUrl, risky, browsers, browser };

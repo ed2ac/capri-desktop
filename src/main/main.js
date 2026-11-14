@@ -336,34 +336,55 @@ function askGate(evt) {
   if (!tasks.isTaskSession(evt.session_id)) return Promise.resolve({ allow: false, reason: 'Not one of Capri\'s tasks.' });
   const id = randomUUID();
   return new Promise((resolve) => {
-    gates.set(id, resolve);
-    overlay?.webContents.send('gate:ask', { id, tool: String(evt.tool_name || ''), input: evt.tool_input || {} });
+    const ask = { id, tool: String(evt.tool_name || ''), input: evt.tool_input || {} };
+    gates.set(id, (answer) => {
+      work.asks.delete(id);
+      workSend();
+      resolve(answer);
+    });
+    work.asks.set(id, ask);
+    workSend();
+    overlay?.webContents.send('gate:ask', ask);
     setTimeout(() => {
       if (!gates.has(id)) return;
+      const done = gates.get(id);
       gates.delete(id);
       overlay?.webContents.send('gate:gone', { id });
-      resolve({ allow: false, reason: 'Nobody answered in time.' });
+      done({ allow: false, reason: 'Nobody answered in time.' });
     }, 10 * 60 * 1000);
   });
 }
 
-async function startTask({ prompt, lang, persona, project, resume }) {
+async function startTask({ prompt, lang, persona, project, folder, resume }) {
   if (typeof prompt !== 'string' || !prompt.trim()) return { ok: false, error: 'empty' };
+  // one of your projects, or a folder you named (checked again here: it must be there)
+  const listed = (await tasks.projects(config.load().projectsRoot)).find((p) => p.dir === project)?.dir || null;
+  const named = !listed && typeof folder === 'string' && folder ? (await tasks.folder({ path: folder }))?.dir : null;
+  if (folder && !listed && !named) return { ok: false, error: 'nofolder' };
   taskAbort = new AbortController();
   const id = randomUUID();
+  const model = (() => {
+    const m = config.load().taskModel || 'sonnet';
+    if (m === 'auto') return project || folder ? 'opus' : 'sonnet';
+    return m === 'default' ? null : m;
+  })();
+  work.task = { id, prompt: prompt.slice(0, 4000), dir: listed || named || tasks.SHOP, model: model || 'padrão', startedAt: Date.now(), steps: [] };
+  if (config.load().workshopAuto !== false) openWorkshop({ quiet: true });
+  workSend();
   const r = await tasks.run({
     id, prompt: prompt.slice(0, 4000), lang: String(lang || 'English'), persona: String(persona || ''), gateScript: GATE_SCRIPT,
-    project: (await tasks.projects(config.load().projectsRoot)).find((p) => p.dir === project)?.dir || null,
+    project: listed || named,
     resume: typeof resume === 'string' ? resume : null,
     // her menu › Claude's model: Sonnet by default; "auto" takes Opus for your code projects
-    model: (() => {
-      const m = config.load().taskModel || 'sonnet';
-      if (m === 'auto') return project ? 'opus' : 'sonnet';
-      return m === 'default' ? null : m;
-    })(),
-    signal: taskAbort.signal, onEvent: (e) => overlay?.webContents.send('task:event', e),
+    model,
+    signal: taskAbort.signal,
+    onEvent: (e) => {
+      workStep(e);
+      if (e.kind !== 'limits') overlay?.webContents.send('task:event', e);
+    },
   });
   taskAbort = null;
+  workEnd(r);
   rebuildTray(); // a new program may be there
   return r;
 }
@@ -385,6 +406,101 @@ function openProgram(p) {
     return { action: 'deny' };
   });
   win.loadFile(p.page);
+}
+
+// ---- Her coding workshop (src/workshop): Claude's task as it goes, its questions, its history, and
+// how much of your Claude plan is used, in a window of its own ----
+const work = { task: null, asks: new Map(), history: [], usage: null };
+const HISTORY_FILE = path.join(tasks.SHOP, '.runs', 'history.json');
+try { work.history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')).slice(0, 30); } catch { /* none yet */ }
+let workshopWin = null;
+
+function workState() {
+  return { task: work.task, asks: [...work.asks.values()], history: work.history, usage: work.usage, lang: config.load().language };
+}
+function workSend() {
+  workshopWin?.webContents.send('work:state', workState());
+}
+function openWorkshop({ quiet = false } = {}) {
+  if (workshopWin) {
+    if (!quiet) { workshopWin.show(); workshopWin.focus(); }
+    return;
+  }
+  workshopWin = new BrowserWindow({
+    width: 900, height: 680, minWidth: 560, minHeight: 420, title: 'Oficina do Claude', autoHideMenuBar: true, backgroundColor: '#14101c',
+    show: false, icon: path.join(ROOT, 'assets', 'icons', 'tray.png'),
+    webPreferences: { preload: path.join(__dirname, '..', 'workshop', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  workshopWin.loadURL('capri://app/src/workshop/workshop.html');
+  workshopWin.once('ready-to-show', () => (quiet ? workshopWin.showInactive() : workshopWin.show()));
+  workshopWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  workshopWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  workshopWin.on('closed', () => { workshopWin = null; });
+  refreshUsage();
+}
+
+// the plan's use: from Claude Code's /usage (free), every 10 minutes while Claude Code is there,
+// and from what its runs report as they go. She hears when it gets high (renderer hands.js).
+let usageAt = 0;
+async function refreshUsage(force = false) {
+  if (!force && Date.now() - usageAt < 60000) return work.usage;
+  usageAt = Date.now();
+  const u = await tasks.usage().catch(() => null);
+  if (u) setUsage(u);
+  return work.usage;
+}
+function setUsage(u) {
+  work.usage = u;
+  workSend();
+  overlay?.webContents.send('usage:update', u);
+}
+// a run's rate_limit_event: the 5-hour window and the week, as fractions, with when they reset
+function usageFromRun(info) {
+  const wins = info?.unifiedWindows || {};
+  if (!work.usage && !Object.keys(wins).length) return;
+  const rows = [...(work.usage?.rows || [])];
+  const put = (key, w) => {
+    if (!w || typeof w.utilization !== 'number') return;
+    const resets = w.resetsAt ? new Date(w.resetsAt * 1000).toISOString() : null;
+    const i = rows.findIndex((r) => r.key === key);
+    const row = { ...(rows[i] || { key, label: null }), pct: Math.round(w.utilization * 100), resetsAt: resets };
+    if (i >= 0) rows[i] = row; else rows.push(row);
+  };
+  put('session', wins.five_hour);
+  put('week', wins.seven_day);
+  if (rows.length) setUsage({ rows, at: Date.now(), status: info.status || null });
+}
+
+function workStep(e) {
+  const t = work.task;
+  if (!t) return;
+  if (e.kind === 'limits') return usageFromRun(e.info);
+  if (e.kind === 'tool') {
+    const i = e.input || {};
+    t.steps.push({
+      at: Date.now(), kind: 'tool', name: e.name,
+      target: String(i.file_path || i.notebook_path || i.command || i.pattern || i.url || i.query || i.description || '').slice(0, 400),
+      detail: e.name === 'Edit' && i.old_string != null ? { old: String(i.old_string).slice(0, 1500), new: String(i.new_string || '').slice(0, 1500) }
+        : e.name === 'Write' && i.content != null ? { new: String(i.content).slice(0, 2000) } : null,
+    });
+  } else if (e.kind === 'text') t.steps.push({ at: Date.now(), kind: 'text', text: String(e.text).slice(0, 2000) });
+  if (t.steps.length > 400) t.steps.splice(0, t.steps.length - 400);
+  workSend();
+}
+
+function workEnd(r) {
+  const t = work.task;
+  if (!t) return;
+  work.history.unshift({
+    prompt: t.prompt.slice(0, 300), dir: t.dir, model: t.model, at: t.startedAt, secs: Math.round((Date.now() - t.startedAt) / 1000),
+    ok: Boolean(r?.ok), text: String(r?.ok ? r.text || '' : r?.error || '').slice(0, 600), steps: t.steps.filter((x) => x.kind === 'tool').length,
+  });
+  work.history = work.history.slice(0, 30);
+  try { fs.mkdirSync(path.dirname(HISTORY_FILE), { recursive: true }); fs.writeFileSync(HISTORY_FILE, JSON.stringify(work.history)); } catch { /* next time */ }
+  work.task = null;
+  work.asks.clear();
+  workSend();
+  setTimeout(() => refreshUsage(true), 3000);
 }
 
 // ---- Files you hand her: Send to › Capri, or dropped on her chat (renderer inbox.js) ----
@@ -562,6 +678,7 @@ function rebuildTray() {
       label: `${t.achievements} (${cfg.achievements.length})`,
       submenu: cfg.achievements.map((a) => ({ label: `★ ${a.name}`, enabled: false })),
     }] : []),
+    { label: t.workshop, click: () => openWorkshop() },
     {
       label: t.programs,
       submenu: [
@@ -573,6 +690,7 @@ function rebuildTray() {
         })(),
         { type: 'separator' },
         { label: t.openShop, click: () => { fs.mkdirSync(tasks.PROGRAMS, { recursive: true }); shell.openPath(tasks.SHOP); } },
+        { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
       ],
     },
     {
@@ -723,6 +841,9 @@ function rebuildTray() {
           },
         },
         { label: t.cameraLook, type: 'checkbox', checked: cfg.cameraLook === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ cameraLook: item.checked }) },
+        { label: cfg.faceData ? t.faceAgain : t.faceEnroll, enabled: cfg.cameraOn === true, click: () => sendCommand('faceEnroll') },
+        { label: t.lockStrangers, type: 'checkbox', checked: cfg.lockStrangers === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockStrangers: item.checked }) },
+        ...(cfg.faceData ? [{ label: t.faceForget, click: () => { updateConfig({ faceData: null }); sendCommand('faceForget'); } }] : []),
         { label: t.lockAway, type: 'checkbox', checked: cfg.lockAway === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ lockAway: item.checked }) },
         { type: 'separator' },
         {
@@ -1277,12 +1398,39 @@ function registerIpc() {
     rebuildTray();
   });
   ipcMain.handle('task:projects', () => tasks.projects(config.load().projectsRoot));
-  ipcMain.on('gate:answer', (_e, { id, allow, reason } = {}) => {
+  // a folder you named in her chat ("a pasta site no windows"): where it is, if it's there
+  ipcMain.handle('task:folder', (_e, spec) => tasks.folder(spec && typeof spec === 'object' ? {
+    path: String(spec.path || '').slice(0, 400), name: String(spec.name || '').slice(0, 80), side: String(spec.side || ''),
+  } : {}, config.load().projectsRoot));
+  ipcMain.on('task:reveal', (_e, dir) => { if (typeof dir === 'string' && dir.startsWith('/')) tasks.reveal(dir); });
+  ipcMain.on('gate:answer', (e, { id, allow, reason } = {}) => {
     const resolve = gates.get(id);
     if (!resolve) return;
     gates.delete(id);
     resolve({ allow: Boolean(allow), reason: String(reason || '') });
+    // answered in the workshop: her question goes away too
+    if (e.sender !== overlay?.webContents) overlay?.webContents.send('gate:gone', { id, allow: Boolean(allow) });
   });
+  // the workshop window (src/workshop/preload.js)
+  ipcMain.handle('work:state', () => workState());
+  ipcMain.handle('work:usage', () => refreshUsage(true));
+  ipcMain.on('work:cancel', () => taskAbort?.abort());
+  ipcMain.on('work:reveal', (_e, dir) => {
+    if (typeof dir !== 'string') return;
+    if (dir.startsWith('/')) tasks.reveal(dir); else if (fs.existsSync(dir)) shell.openPath(dir);
+  });
+  ipcMain.on('work:allowAll', () => overlay?.webContents.send('work:allowAll'));
+  ipcMain.handle('work:pick', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(workshopWin || undefined, { properties: ['openDirectory'], defaultPath: app.getPath('home') });
+    if (canceled || !filePaths[0]) return null;
+    return tasks.folder({ path: filePaths[0] });
+  });
+  // a task typed in the workshop: through her (she narrates it and asks you, like any other)
+  ipcMain.on('work:start', (_e, { prompt, folder } = {}) => {
+    if (typeof prompt !== 'string' || !prompt.trim() || work.task) return;
+    overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
+  });
+  ipcMain.on('work:open', () => openWorkshop());
   // her pranks (play.js), only as far as her menu › Mischief allows: the pointer only when 'bold'
   ipcMain.handle('play:prank', async (_e, { kind, arg } = {}) => {
     const level = config.load().pranks || 'light';
@@ -1424,14 +1572,36 @@ function registerIpc() {
   })).catch(() => null));
   // how long since you last touched the keyboard or the mouse, in seconds (her health breaks)
   ipcMain.handle('pc:idle', () => powerMonitor.getSystemIdleTime());
+  // the faces she knows (faceid.js): yours and the people you introduced, as numbers (no picture),
+  // encrypted with your Windows account like her keys, only on this PC
+  ipcMain.handle('face:load', () => {
+    const stored = config.load().faceData;
+    if (!stored) return null;
+    try {
+      return JSON.parse(setup.openKey(stored) || 'null');
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle('face:save', (_e, data) => {
+    if (data === null) {
+      updateConfig({ faceData: null });
+      return true;
+    }
+    const json = JSON.stringify(data || {});
+    if (json.length > 200000) return false;
+    updateConfig({ faceData: setup.sealKey(json) });
+    return true;
+  });
   // you walked away (her camera, with "Lock my PC when I leave" on): Windows locked, as Win+L does
   ipcMain.handle('pc:lock', () => {
-    if (process.platform !== 'win32' || config.load().lockAway !== true) return false;
+    const cfg = config.load();
+    if (process.platform !== 'win32' || (cfg.lockAway !== true && cfg.lockStrangers !== true)) return false;
     execFile('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true }, () => {});
     return true;
   });
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
-  ipcMain.handle('apps:site', (_e, address) => launch.site(address).catch(() => false));
+  ipcMain.handle('apps:site', (_e, address, browser) => launch.site(address, typeof browser === 'string' ? browser : null).catch(() => false));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
   ipcMain.on('overlay:focus', (_e, on) => {
     if (!overlay) return;
@@ -1633,6 +1803,9 @@ function main() {
     wakeSync();
     // her local model, ready for her: Ollama started if it's asleep (it may not start with Windows)
     setTimeout(() => wakeOllama().then(() => refreshModels()).catch(() => {}), 4000);
+    // how much of your Claude plan is used (free to ask): now and then
+    setTimeout(() => refreshUsage(true), 20000);
+    setInterval(() => refreshUsage(true), 10 * 60000);
     // started with a file (Send to › Capri while she wasn't running)
     const first = fileArg(process.argv);
     if (first) setTimeout(() => sendCommand('file', { path: first }), 9000);

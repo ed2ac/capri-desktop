@@ -26,6 +26,7 @@ import { Senses } from './senses.js';
 import { Life } from './life.js';
 import { Camera } from './camera.js';
 import { Hearing } from './hearing.js';
+import { FaceId } from './faceid.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -668,6 +669,10 @@ async function boot() {
   const camera = new Camera({ capri, panel, brain, host, chat, guide, voice, heart, bond, look });
   camera.configure(config);
   chat.care.camera = camera;
+  // who's at your PC (faceid.js): you, someone you introduced, or a stranger
+  const face = new FaceId({ capri, panel, brain, host, chat, guide, camera, voice, activity, look });
+  face.configure(config);
+  chat.care.face = face;
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
@@ -698,7 +703,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -864,6 +869,7 @@ async function boot() {
     senses.configure(cfg);
     camera.configure(cfg);
     hearing.configure(cfg);
+    face.configure(cfg);
     if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;
@@ -942,6 +948,12 @@ async function boot() {
         break;
       case 'wake': // her name, heard (src/wake)
         hearing.heardWord('capri');
+        break;
+      case 'faceEnroll': // her menu: Learn my face
+        face.enroll();
+        break;
+      case 'faceForget': // her menu: Forget the faces
+        face.forget();
         break;
       case 'earOn': // her menu: Camera and sounds › Hear the room
         hearing.setOn(cmd.on);

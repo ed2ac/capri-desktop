@@ -167,7 +167,7 @@ export class Camera {
     if (hold('shut', avg(b, 'eyeBlinkLeft', 'eyeBlinkRight') > 0.6, 4000)) { s.shut = now + 60000; this.react('sleepy', 30 * 60000, 'look'); }
     if (hold('two', faces >= 2, 3000)) { s.two = now + 60000; this.react('visitor', 30 * 60000, 'wide'); }
     // a real look at you (her menu): when something just happened, or when she feels like it
-    if (this.lookOn && s.present && !this.looking && now - (this.lookedAt || 0) > (this.floor || 120000) && this.look.free()) {
+    if (this.lookOn && s.present && !this.looking && !this.privacy && now - (this.lookedAt || 0) > (this.floor || 120000) && this.look.free()) {
       const happened = this.urgent && now - this.urgent < 20000;
       const boredom = this.heart?.boredom ?? 30;
       const urge = Math.random() < (0.0025 + boredom / 25000); // checked 4 times a second: about once a minute or two

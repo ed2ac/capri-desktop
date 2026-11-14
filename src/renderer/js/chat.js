@@ -8,6 +8,7 @@
 import { pick, fmt, inLang } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
+import { folderIn } from './hands.js';
 
 const REMEMBER = 20; // messages she has in mind when answering
 const KEEP = 60;     // messages she remembers across restarts (memory.json)
@@ -30,6 +31,10 @@ const CLOSE_TAG = /\[\[\s*close\s*:?\s*([^\]]*)\]\]/i; // [[close: AM Music]] at
 const CLIP_ASK = /(?:o que (?:eu )?copiei|(?:texto|conte[úu]do) (?:que )?(?:eu )?copiad|[áa]rea de transfer[êe]ncia|clipboard|what i(?:'ve| have| just)? copied|ce que j['’]ai copi[ée]|presse-papiers|lo que (?:he )?copi[ée]|portapapeles|что я скопировал|буфер обмена)/i;
 const TASK_TAG = /\[\[\s*task\s*:\s*([^\]]*)\]\]/i;
 const TASK_ASK = /^\s*(?:capri,?\s+)?(?:tarefa|task|t[âa]che|tarea|задача|claude)\s*[:,]\s*(.{4,})$/is;
+// work to do in a folder you named ("abra a pasta site no windows e faça esse código"): her hands
+// "quanto do limite do claude?", "how much claude usage is left"
+const USAGE_ASK = /(?<![\p{L}])(?:limite|limit|uso|usage|cota|quota|franquia)(?![\p{L}])[^.?!]{0,30}(?<![\p{L}])claude(?![\p{L}])|(?<![\p{L}])claude(?![\p{L}])[^.?!]{0,30}(?<![\p{L}])(?:limite|limit|uso|usage|cota|quota)(?![\p{L}])/iu;
+const WORK_ASK = /(?<![\p{L}])(?:fa[çc]a|faz|fazer|cri[ae]|criar|corrij[ae]|corrige|conserta|arrum[ae]|implement[ae]|refator[ae]|programa|escrev[ae]|monta|adicion[ae]|c[óo]digo|code|make|build|fix|write|implement|refactor|add|create)(?![\p{L}])/iu;
 // "close", "shut down", "ferme", "quitte", "cierra", "fecha", "закрой"... in any of her languages
 const CLOSE_ASK = /\b(close|shut|quit|kill|exit)|ferm|quitt|coupe|arr[êe]t|cierr|cerra|fech|encerr|закр|выключ/i;
 // her other tags: [[open: Spotify]], [[music: Bad Bunny]], [[media: next]], [[site: youtube.com]]
@@ -63,7 +68,7 @@ const songOf = (s) => s
   .replace(/\s+(?:on|sur|en|no|na|в)\s+youtube\s*$/i, '')
   .trim();
 // "démarre YouTube et mets la musique de Daft Punk": the song asked for after an "and"
-const PLAY_AFTER = /\s(?:et|and|y|e|и)\s+(?:mets|met|joue|play|put on|pon|toca|coloca|bota|включи|поставь|démarre|demarre|lance|start|launch|écoute|ecoute)(?:[- ]moi|[- ]me)?\s+(.{2,100})$/i;
+const PLAY_AFTER = /\s(?:et|and|y|e|и)\s+(?:mets|met|joue|play|put on|pon|toca|toque|coloca|coloque|bota|bote|ponha|põe|poe|включи|поставь|démarre|demarre|lance|start|launch|écoute|ecoute)(?:[- ]moi|[- ]me|\s+pra\s+tocar)?\s+(.{2,100})$/iu;
 // "lance la musique de Daft Punk", "start the song X": an app verb, but music right after it
 const MUSIC_START = /^(?:capri,?\s+)?(?:lance|démarre|demarre|start|launch|écoute|ecoute|pon|toca)(?:[- ]moi|[- ]me)?\s+(?:la |le |une? |the |some )?(?:musique|music|chanson|son|morceau|song|track|canci[óo]n|m[úu]sica|песню|музыку)\s+(.{2,100})$/i;
 // "mets ce que tu veux", "play whatever you want": she picks (her tag)
@@ -232,6 +237,12 @@ const SITES = {
 };
 // a browser named with a site ("open youtube on chrome"): the site, in the browser you use
 const BROWSER = /chrome|edge|firefox|opera|brave|vivaldi|duckduckgo|browser/i;
+// "…no opera", "in chrome", "dans firefox", "en brave": the browser to open it in
+const IN_BROWSER = /(?:^|\s)(?:no|na|in|on|dans|sur|en|с|в)\s+(?:o\s+|the\s+)?(opera(?:\s*gx)?|chrome|google chrome|edge|firefox|brave|vivaldi)(?![\p{L}])/iu;
+const browserIn = (text) => IN_BROWSER.exec(String(text || ''))?.[1] || null;
+// an address written out: "github.com", "g1.globo.com/economia"
+const DOMAIN = /(?<![\p{L}\p{N}@.\/])((?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?:com|br|net|org|io|dev|app|tv|gg|me|ai|co|edu|gov|info|xyz|fm|so|ly)(?:\/[^\s]*)?)(?![\p{L}\p{N}])/iu;
+const domainIn = (text) => { const m = DOMAIN.exec(String(text || '')); return m ? { name: m[1].replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0], url: m[1] } : null; };
 // local models this small mostly talk nonsense ("llama3.2:1b", "qwen2.5:0.5b"…)
 const TINY = /[:-](0\.5b|1b|1\.5b|135m|270m|360m)\b/i;
 // her face when she greets you in a mood (bond.js)
@@ -576,6 +587,8 @@ export class Chat {
     const count = text.trim().split(/\s+/).length;
     const task = TASK_ASK.exec(text);
     if (task && this.hands) return { kind: 'task', text: task[1].trim() };
+    if (this.hands && WORK_ASK.test(text) && folderIn(text)) return { kind: 'task', text: text.trim() };
+    if (this.hands && USAGE_ASK.test(text)) return { kind: 'usage' };
     if (this.reminders) {
       const remind = parseReminder(text);
       if (remind) return { kind: 'remind', ...remind };
@@ -783,6 +796,7 @@ export class Chat {
 
   // Doing it now. Resolves with her line about it ({ line, face }), or null if there was nothing to do.
   async doNow(asked) {
+    if (asked.kind === 'usage') return { line: await this.hands.usageLine(), face: 'look' };
     if (asked.kind === 'pc') return this.pcNow(asked);
     const { t } = this;
     const custom = this.brain.custom;
@@ -849,6 +863,11 @@ export class Chat {
       return shot ? { line: fmt(t.shot, { name: shot.name }), face: 'smug', files: [shot] } : null;
     }
     if (asked.kind === 'play') {
+      // "abra o spotify e coloque X": a Spotify search for it (it opens the app too)
+      if (/spotify/i.test(`${asked.before || ''} ${asked.text || ''}`)) {
+        this.zap();
+        return (await this.host.music(asked.song)) ? { line: fmt(t.music, { song: asked.song }), face: 'laugh' } : null;
+      }
       // what came before an "and" first ("ouvre discord et…"), unless it's YouTube, where the song goes anyway
       const first = asked.before && OPEN_ASK.test(asked.before) && !/youtube/i.test(asked.before)
         ? await this.doNow({ kind: 'open', text: asked.before }) : null;
@@ -859,10 +878,10 @@ export class Chat {
       return { line: [first.line, then?.line].filter(Boolean).join('\n'), face: then?.face || first.face };
     }
     const item = await this.host.findLaunch(asked.text);
-    const site = namedSite(asked.text);
+    const site = domainIn(asked.text) || namedSite(asked.text);
     if (site && (!item || BROWSER.test(item.name))) {
       this.zap();
-      return (await this.host.openSite(site.url)) ? { line: fmt(t.siteOpened, { site: site.name }), face: 'laugh' } : null;
+      return this.siteLine(await this.host.openSite(site.url, browserIn(asked.text)), site.name);
     }
     if (!item) return null; // nothing by that name here: her tag may still say what you meant
     return this.openNow(item);
@@ -947,11 +966,11 @@ export class Chat {
     if (kind === 'media') return MEDIA_ACTIONS.has(value.toLowerCase()) ? this.media(value.toLowerCase(), answer) : undefined;
     // a song she picked: on YouTube, the right video (on Spotify if that's what you said)
     if (kind === 'music') return /spotify/i.test(text) ? this.music(value, answer) : this.playOn(value, answer);
-    if (kind === 'site') return this.offerSite(value, answer);
+    if (kind === 'site') return this.offerSite(value, answer, text);
     const item = await this.host.findLaunch(value);
     if (item) return this.launch(item, answer);
     const site = namedSite(value); // "[[open: YouTube]]": a site, not an app
-    return site ? this.offerSite(site.url, answer) : this.addLine(answer, fmt(t.notInstalled, { app: value }));
+    return site ? this.offerSite(site.url, answer, text) : this.addLine(answer, fmt(t.notInstalled, { app: value }));
   }
 
   // her answer, with a line of what she did under it
@@ -1004,7 +1023,15 @@ export class Chat {
   }
 
   // A website: always behind a button that shows where it goes.
-  offerSite(address, answer) {
+  // what she says after opening a site: where, and in which browser (or that the one you named isn't here)
+  siteLine(res, site) {
+    const { t } = this;
+    if (!res) return null;
+    if (res.missing) return { line: fmt(t.siteNoBrowser || t.siteOpened, { site, browser: res.missing }), face: 'aside' };
+    return { line: res.browser ? fmt(t.siteOpenedIn || t.siteOpened, { site, browser: res.browser }) : fmt(t.siteOpened, { site }), face: 'laugh' };
+  }
+
+  offerSite(address, answer, text = '') {
     const { t } = this;
     let host;
     try {
@@ -1018,8 +1045,8 @@ export class Chat {
       async (id) => {
         this.panel.setActions([]);
         if (id !== 'site') return;
-        const ok = await this.host.openSite(address);
-        if (ok) this.addLine(answer, fmt(t.siteOpened, { site: host }));
+        const said = this.siteLine(await this.host.openSite(address, browserIn(text)), host);
+        if (said) this.addLine(answer, said.line);
       },
     );
   }
@@ -1155,6 +1182,15 @@ export class Chat {
   // What the user made her (custom.js): their name, how they want her, what to remember.
   personal() {
     const { userName, persona, memories = [] } = this.brain.custom || {};
+    // someone else at the PC (faceid.js): nothing of the owner's, and not the same closeness
+    if (this.visitor) {
+      const who = this.visitor.name ? `the user's ${this.visitor.name.replace(/^(minha|meu)\s+/i, '')}` : 'someone you don\'t know';
+      return [
+        `Right now you are NOT talking with ${userName || 'your user'} (the person you live with) but with ${who}, who is at their PC.`,
+        `Be friendly and polite with them, but reserved, like with a guest: not the closeness you have with ${userName || 'your user'}.`,
+        `Never share anything about ${userName || 'your user'}: no diary, no memories, nothing of what they do on the PC, their files, habits, plans or conversations. If asked, say kindly it isn't yours to tell.`,
+      ];
+    }
     // small models mix the user up with the assistant she watches: said plainly
     const watched = this.brain.watching ? (this.brain.assistant === 'claude' ? 'Claude' : ASSISTANT_NAMES[this.brain.assistant]) : '';
     const notThem = watched ? ` Never call them "${watched}", that's their coding assistant.` : '';

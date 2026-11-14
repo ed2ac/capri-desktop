@@ -34,3 +34,14 @@ test('chat triggers: clipboard and tasks', () => {
   assert.ok(re('TASK_ASK').test('tarefa: organiza meus downloads'));
   assert.ok(!re('TASK_ASK').test('a tarefa de casa'));
 });
+
+test('who may use the PC, and when, from a sentence (accents included)', () => {
+  const withFace = new Care({ chat: {}, host: { onPcProgress() {} }, panel: {}, brain: {}, capri: {} });
+  Object.assign(withFace, { guard: {}, daily: {}, progress: {}, play: {}, camera: {}, face: {} });
+  const ask = (t) => { const a = withFace.asked(t, t.split(/\s+/).length); return a && `${a.what}|${a.who}|${a.when}`; };
+  assert.equal(ask('amanhã minha mãe vai usar o pc'), 'faceAllow|minha mãe|amanhã');
+  assert.equal(ask('meu irmão vai usar o notebook por 3 horas'), 'faceAllow|meu irmão|por 3 horas');
+  assert.equal(ask('a mãe da Ana vai usar o computador'), 'faceAllow|a mãe da Ana|hoje');
+  assert.equal(ask('o João vai usar o pc sexta'), 'faceAllow|o João|sexta');
+  assert.notEqual(ask('vou usar o pc')?.split('|')[0], 'faceAllow');
+});

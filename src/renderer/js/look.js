@@ -92,7 +92,7 @@ export class Look {
 
   // On her own: now and then, when you're there, on another window than last time, and she's free.
   tick() {
-    if (!this.auto || !this.asked || this.looking || Date.now() < this.nextAt) return;
+    if (!this.auto || !this.asked || this.looking || Date.now() < this.nextAt || this.privacy) return;
     if (this.active() > ACTIVE_MS || !this.free()) return;
     const now = Date.now();
     const fg = this.capri.windows.fg;

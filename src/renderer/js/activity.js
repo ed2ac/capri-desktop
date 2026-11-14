@@ -162,6 +162,7 @@ export class Activity {
   // The window in front, as windows.js sends it while this is on.
   onWindows({ app, game }) {
     if (!this.auto || !app || game) return; // a game: pc.js has it, and she leaves you to it
+    if (this.privacy) return; // someone else at your PC: their doings aren't yours to keep
     const proc = String(app.proc || '').toLowerCase();
     const title = String(app.title || '').trim();
     if (!proc || IGNORE.test(proc) || (!title && !app.private)) return;
@@ -237,6 +238,7 @@ export class Activity {
   tick() {
     if (!this.auto || !this.asked || this.busy || this.quiet) return; // quiet: focus mode (daily.js)
     if (this.obs && this.obsBehave) return; // OBS open: nothing said about what's on your screen
+    if (this.privacy) return; // someone else at your PC (faceid.js): not a word about what's done
     const at = Date.now();
     if (this.active() > ACTIVE_MS || !this.look.free()) return;
     // something that just happened (a game, a call, a long session ended, a new app, a song) comes

@@ -23,7 +23,8 @@ const PROGRAMS = path.join(SHOP, 'programs');
 const TRASH = path.join(SHOP, 'trash');
 
 // a Windows path as WSL sees it: C:\Users\you -> /mnt/c/Users/you
-const toWsl = (p) => (WIN ? p.replace(/^([A-Za-z]):\\/, (_m, d) => `/mnt/${d.toLowerCase()}/`).replace(/\\/g, '/') : p);
+const toWslPath = (p) => p.replace(/^\\\\wsl(?:\.localhost|\$)\\[^\\]+/i, '').replace(/^([A-Za-z]):[\\/]/, (_m, d) => `/mnt/${d.toLowerCase()}/`).replace(/\\/g, '/');
+const toWsl = (p) => (WIN ? toWslPath(p) : p);
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
 const NEVER = [
@@ -38,7 +39,7 @@ function brief({ lang, persona, project }) {
     persona,
     '',
     project
-      ? `You are working in the user's code project at ${project} (in WSL), as their pair programmer: read the code, change it, run its tests and builds as needed. Their Windows user folder is ${user}.`
+      ? `You are working in the user's folder ${project} (in WSL; /mnt/c/… is their Windows C: drive), as their pair programmer when it's code: read the code, change it, run its tests and builds as needed. Their Windows user folder is ${user}.`
       : `You are doing a task for the user on their PC (Windows, with you running in WSL). Your workshop is ${toWsl(SHOP)}. Their Windows user folder is ${user} (Downloads, Desktop, Pictures, Documents; Documents may be under OneDrive there).`,
     'Every action that changes something is shown to the user, who allows or denies it: keep each step small and clear, and do exactly what they asked, nothing more.',
     `Never delete anything: to remove a file or folder, move it into ${toWsl(TRASH)}/<today's date>/ instead (it stays recoverable). Deleting commands are blocked anyway.`,
@@ -94,6 +95,73 @@ function projects(root = '~/dev') {
   });
 }
 
+// A folder you named for a task, as WSL sees it, if it's there: a path ("C:\\Users\\you\\site",
+// "/home/you/app", "~/dev/app") or a name and where ("a pasta site no windows": your user folder,
+// Desktop, Documents, Downloads, OneDrive; "no wsl": your home, ~/dev, her projects root).
+// { dir, win } (win: the same folder as Windows' Explorer opens it) or null.
+function folder({ path: wanted = '', name = '', side = '' } = {}, root = '~/dev') {
+  const bad = (s) => /\.\.|[\0\n\r$`"]/.test(s);
+  const tilde = (p) => (p.startsWith('~/') ? `"$HOME"/${shq(p.slice(2))}` : p === '~' ? '"$HOME"' : shq(p));
+  let tries = [];
+  if (wanted) {
+    if (bad(wanted)) return Promise.resolve(null);
+    tries = [/^(?:[A-Za-z]:[\\/]|\\\\wsl)/i.test(wanted) ? toWslPath(wanted) : wanted];
+  } else if (name && !bad(name) && !/[\\/]/.test(name)) {
+    const winUser = toWslPath(HOME);
+    const onWin = ['', 'Desktop', 'Documents', 'Downloads', 'OneDrive/Documents', 'OneDrive/Desktop', 'OneDrive/Área de Trabalho', 'OneDrive/Documentos', 'source/repos']
+      .map((d) => `${winUser}/${d ? `${d}/` : ''}${name}`);
+    const safeRoot = /^[~\w./-]+$/.test(root) ? root : '~/dev';
+    const onWsl = [`~/${name}`, `~/dev/${name}`, `${safeRoot}/${name}`, `~/projects/${name}`];
+    tries = side === 'windows' ? onWin : side === 'wsl' ? onWsl : [...onWsl, ...onWin];
+  }
+  if (!tries.length) return Promise.resolve(null);
+  // the first that's there; a name in any letter case ("Site" for "site")
+  const script = `for d in ${tries.map(tilde).join(' ')}; do m="$d"; [ -d "$m" ] || m=$(find "$(dirname "$d")" -mindepth 1 -maxdepth 1 -type d -iname "$(basename "$d")" 2>/dev/null | head -n 1); [ -n "$m" ] && [ -d "$m" ] && { cd "$m" && pwd; exit 0; }; done; exit 1`;
+  const [cmd, args] = WIN ? ['wsl.exe', wslArgs(['-e', 'bash', '-c', script])] : ['bash', ['-c', script]];
+  return new Promise((resolve) => {
+    execFile(cmd, args, { windowsHide: true, timeout: 20000 }, (err, out) => {
+      const dir = err ? null : String(out).trim().split('\n')[0];
+      resolve(dir ? { dir, win: toWinPath(dir) } : null);
+    });
+  });
+}
+
+// a WSL path as Windows opens it: /mnt/c/x -> C:\\x, /home/you/x -> \\\\wsl.localhost\\<distro>\\home\\you\\x
+function toWinPath(dir) {
+  const m = /^\/mnt\/([a-z])(\/.*)?$/.exec(dir);
+  if (m) return `${m[1].toUpperCase()}:${(m[2] || '\\').replace(/\//g, '\\')}`;
+  return `\\\\wsl.localhost\\${distro() || 'Ubuntu'}${dir.replace(/\//g, '\\')}`;
+}
+
+// shows a folder in Windows' Explorer
+function reveal(dir) {
+  if (!WIN || !dir) return;
+  spawn('explorer.exe', [toWinPath(dir)], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+}
+
+// How much of your Claude plan is used: what Claude Code's own /usage says (answered by Claude Code
+// itself, no model, nothing spent), with her hooks off for it. { rows: [{ key, label, pct, resets }], at }
+// key: 'session' (the 5-hour window), 'week', or 'week:<model>'; null if Claude Code isn't there.
+function usage() {
+  const cmd0 = `${PATHS}claude -p /usage --settings ${shq('{"disableAllHooks":true}')}`;
+  const [cmd, args] = WIN ? ['wsl.exe', wslArgs(['--cd', '~', '-e', 'bash', '-ic', cmd0])] : ['bash', ['-ic', cmd0]];
+  return new Promise((resolve) => {
+    execFile(cmd, args, { windowsHide: true, timeout: 45000 }, (err, out) => resolve(err ? null : parseUsage(String(out))));
+  });
+}
+
+function parseUsage(text) {
+  const rows = [];
+  for (const m of text.matchAll(/^\s*Current\s+(session|week)(?:\s*\(([^)]+)\))?:\s*(\d+(?:\.\d+)?)%\s*used(?:\s*[·•-]\s*resets?\s+(.+?))?\s*$/gim)) {
+    const model = m[2] && !/all models/i.test(m[2]) ? m[2].trim() : null;
+    rows.push({
+      key: m[1].toLowerCase() === 'session' ? 'session' : model ? `week:${model}` : 'week',
+      label: model, pct: Number(m[3]), resets: (m[4] || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || null,
+    });
+  }
+  return rows.length ? { rows, at: Date.now() } : null;
+}
+
 async function run({ id, prompt, lang, persona, gateScript, project = null, resume = null, model = null, onEvent = () => {}, signal }) {
   if (running) return { ok: false, error: 'busy' };
   if (!(await claudeHere())) return { ok: false, error: 'noclaude' };
@@ -109,7 +177,7 @@ async function run({ id, prompt, lang, persona, gateScript, project = null, resu
   }));
   // the same conversation as last time ("go on", "now make the tests pass"), or a new one
   const session = /^[0-9a-f-]{36}$/.test(resume || '') ? resume : randomUUID();
-  const where = project && /^\/[\w./ -]+$/.test(project) ? project : toWsl(SHOP);
+  const where = project && /^\/[^\0\n\r'"$`\\]+$/.test(project) ? project : toWsl(SHOP);
   const claude = ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'default',
     ...(/^(sonnet|opus|haiku)$/.test(model || '') ? ['--model', model] : []),
     '--add-dir', shq(toWsl(HOME)), ...(project ? ['--add-dir', shq(toWsl(SHOP))] : []),
@@ -147,7 +215,8 @@ async function run({ id, prompt, lang, persona, gateScript, project = null, resu
               onEvent({ kind: 'text', text: b.text });
             }
           }
-        } else if (msg.type === 'result') result = msg;
+        } else if (msg.type === 'rate_limit_event') onEvent({ kind: 'limits', info: msg.rate_limit_info || {} });
+        else if (msg.type === 'result') result = msg;
       }
     });
     child.stderr.on('data', (c) => { errors += c; });
@@ -188,4 +257,4 @@ function programs() {
   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-module.exports = { run, programs, projects, isTaskSession, SHOP, PROGRAMS };
+module.exports = { run, programs, projects, folder, reveal, toWinPath, usage, parseUsage, isTaskSession, SHOP, PROGRAMS };

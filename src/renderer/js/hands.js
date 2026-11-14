@@ -11,6 +11,24 @@ const VERBS = {
   LS: 'OLHA', WebFetch: 'NAVEGA', WebSearch: 'PESQUISA', TodoWrite: 'PLANEJA', Task: 'DELEGA', Agent: 'DELEGA',
 };
 const base = (p = '') => String(p).split(/[\\/]/).filter(Boolean).pop() || String(p);
+// a folder named in what you said: a path ("C:\\Users\\eu\\site", "~/dev/app", "/home/eu/app", in
+// quotes if it has spaces) or a name and where ("a pasta site no windows", "na pasta api do wsl")
+const QUOTED_PATH = /["“']((?:[A-Za-z]:[\\/]|~\/|\/)[^"”']+)["”']/u;
+const BARE_PATH = /(?<![\p{L}\p{N}])((?:[A-Za-z]:[\\/]|~\/|\/(?:home|mnt|opt|srv|var|tmp)\/)[^\s"'<>|?*,;]*)/u;
+const NAMED_FOLDER = /(?<![\p{L}])(?:pasta|diret[óo]rio|folder|projeto|project|dossier|carpeta)\s+(?:chamad[ao]\s+|called\s+|named\s+)?["“]?([\p{L}\p{N}][\p{L}\p{N}._ -]{0,60}?)["”]?\s+(?:no|do|em|dentro do|in|on|inside|on the|dans|en)\s+(?:o\s+|the\s+|meu\s+|my\s+)?(windows|wsl|linux|ubuntu)(?![\p{L}])/iu;
+const ONE_FOLDER = /(?<![\p{L}])(?:pasta|folder|dossier|carpeta)\s+["“]?([\p{L}\p{N}][\p{L}\p{N}._-]{1,60})["”]?/iu;
+const NOT_FOLDER = /^(de|do|da|dos|das|que|onde|com|em|no|na|of|the|with|where|downloads?|nova|new)$/i;
+export function folderIn(text = '') {
+  const said = String(text);
+  const path = (QUOTED_PATH.exec(said) || BARE_PATH.exec(said))?.[1]?.replace(/[.!?)]+$/, '');
+  if (path) return { path };
+  const named = NAMED_FOLDER.exec(said);
+  if (named) return { name: named[1].trim(), side: /windows/i.test(named[2]) ? 'windows' : 'wsl' };
+  const one = ONE_FOLDER.exec(said)?.[1];
+  return one && !NOT_FOLDER.test(one) ? { name: one, side: '' } : null;
+}
+const OPEN_IT = /(?<![\p{L}])(?:abr[aei]\w*|open|ouvre|mostr[ae]\w*|show)(?![\p{L}])/iu;
+
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export class Hands {
@@ -27,7 +45,18 @@ export class Hands {
     setInterval(() => this.refresh(), 10 * 60000);
     host.onTaskEvent?.((e) => this.onEvent(e));
     host.onGateAsk?.((g) => this.onAsk(g));
-    host.onGateGone?.(({ id }) => { this.asks = this.asks.filter((g) => g.id !== id); });
+    host.onGateGone?.(({ id }) => {
+      this.asks = this.asks.filter((g) => g.id !== id);
+      // answered in her workshop window (or nobody answered): her question goes away
+      if (this.current?.g.id === id) this.current.gone();
+    });
+    // her workshop window: "allow all in this task", and a task typed there
+    host.onWorkAllowAll?.(() => { this.allowAll = true; });
+    host.onWorkStart?.(({ prompt, folder }) => this.start(prompt, '', { folder }));
+    // how much of your Claude plan is used (main tasks.js): she tells you when it gets high
+    this.usage = null;
+    this.warned = {};
+    host.onUsage?.((u) => this.onUsage(u));
   }
 
   get t() {
@@ -51,19 +80,33 @@ export class Hands {
 
   // Her chat: Claude could do this. A button first (and, on the same project as last time, carrying
   // on with that conversation or starting over).
-  offer(prompt, answer, text = '') {
+  async offer(prompt, answer, text = '') {
     const t = this.t;
     if (this.running) return this.chat.addLine(answer, t.busy, 'aside');
-    const project = this.projectIn(text) || this.projectIn(prompt);
+    let project = this.projectIn(text) || this.projectIn(prompt);
+    let folder = null;
+    // a folder you named, on Windows or in WSL: found first (and shown, if you said "abra")
+    const spec = !project && (folderIn(text) || folderIn(prompt));
+    if (spec) {
+      const found = await this.host.taskFolder?.(spec).catch(() => null);
+      if (!found && (spec.path || spec.side)) return this.chat.addLine(answer, fmt(t.noFolder || t.failed, { folder: spec.path || spec.name, error: spec.path || spec.name }), 'aside');
+      if (found) {
+        folder = found.dir;
+        project = { name: found.win || found.dir, dir: found.dir };
+        if (OPEN_IT.test(text)) this.host.taskReveal?.(found.dir);
+      }
+    }
     const dir = project?.dir || null;
     const again = this.last && this.last.project === dir && Date.now() - this.last.at < 60 * 60000;
-    this.chat.addLine(answer, project ? fmt(t.offerProject, { project: project.name }) : t.offer, 'look');
+    const full = (this.usage?.rows || []).find((r) => r.key === 'session' && r.pct >= 90);
+    if (full) this.chat.addLine(answer, fmt(t.usageFull, { pct: Math.round(full.pct), which: t.usageSession, when: this.resetsWhen(full) }), 'wide');
+    this.chat.addLine(answer, folder ? fmt(t.offerFolder || t.offerProject, { project: project.name, folder: project.name }) : project ? fmt(t.offerProject, { project: project.name }) : t.offer, 'look');
     const buttons = again
       ? [{ id: 'resume', label: t.resume, primary: true }, { id: 'go', label: t.fresh }, { id: 'no', label: t.no }]
       : [{ id: 'go', label: t.start, primary: true }, { id: 'no', label: t.no }];
     this.chat.panel.setActions(buttons, (id) => {
       this.chat.panel.setActions([]);
-      if (id === 'go' || id === 'resume') this.start(prompt, answer, { project: dir, resume: id === 'resume' ? this.last.session : null });
+      if (id === 'go' || id === 'resume') this.start(prompt, answer, { project: folder ? null : dir, folder, resume: id === 'resume' ? this.last.session : null });
     });
   }
 
@@ -78,7 +121,7 @@ export class Hands {
     this.start(`The command \`${command}\` just failed (exit code ${code}) in this project, run by the user in their terminal. Find out why and fix it; run it again to check.`, '', { project: project.dir });
   }
 
-  async start(prompt, answer = '', { project = null, resume = null } = {}) {
+  async start(prompt, answer = '', { project = null, folder = null, resume = null } = {}) {
     const t = this.t;
     if (this.running) return;
     this.running = true;
@@ -87,9 +130,9 @@ export class Hands {
     else this.panel.say({ kind: 'work', face: 'smug', line: t.starting, hold: 4000 });
     this.capri.setMode('work');
     const lang = { pt: 'Brazilian Portuguese', en: 'English', fr: 'French', es: 'Spanish', ru: 'Russian' }[this.brain.lang] || 'English';
-    const res = await this.host.taskStart({ prompt, lang, persona: this.chat.lookPersona(), project, resume }).catch((err) => ({ ok: false, error: err.message }));
+    const res = await this.host.taskStart({ prompt, lang, persona: this.chat.lookPersona(), project, folder, resume }).catch((err) => ({ ok: false, error: err.message }));
     this.running = false;
-    if (res.ok && res.session) this.last = { session: res.session, project, at: Date.now() };
+    if (res.ok && res.session) this.last = { session: res.session, project: project || folder, at: Date.now() };
     this.onDone?.(res.ok, project);
     this.panel.setTicker(null);
     this.capri.setMode('idle');
@@ -101,7 +144,7 @@ export class Hands {
       this.capri.perform('hop', this.capri.towardCenter());
     } else {
       face = 'aside';
-      line = res.error === 'noclaude' ? t.noClaude : res.error === 'cancelled' ? t.cancelled : res.error === 'busy' ? t.busy : fmt(t.failed, { error: clip(String(res.error), 160) });
+      line = res.error === 'noclaude' ? t.noClaude : res.error === 'cancelled' ? t.cancelled : res.error === 'busy' ? t.busy : res.error === 'nofolder' ? fmt(t.noFolder || t.failed, { folder: folder || '', error: folder || '' }) : fmt(t.failed, { error: clip(String(res.error), 160) });
       if (res.error !== 'cancelled') this.voice.play('error');
     }
     if (!this.chat.interject(line, [], null)) {
@@ -111,6 +154,38 @@ export class Hands {
 
   cancel() {
     if (this.running) this.host.taskCancel();
+  }
+
+  // the 5-hour window and the week: a word from her at 80% and 95% (once each, until it resets)
+  onUsage(u) {
+    this.usage = u;
+    const t = this.t;
+    for (const row of (u?.rows || []).filter((r) => r.key === 'session' || r.key === 'week')) {
+      const level = row.pct >= 95 ? 95 : row.pct >= 80 ? 80 : 0;
+      const was = this.warned[row.key] || 0;
+      if (level < was) this.warned[row.key] = level; // it reset
+      if (!level || level <= was || !t.usageHigh) continue;
+      this.warned[row.key] = level;
+      const line = fmt(level >= 95 ? t.usageFull : t.usageHigh, { pct: Math.round(row.pct), which: row.key === 'session' ? t.usageSession : t.usageWeek, when: this.resetsWhen(row) });
+      if (!this.chat.interject(line, [], null)) this.panel.say({ kind: 'info', face: level >= 95 ? 'wide' : 'look', line, hold: 9000 });
+    }
+  }
+
+  resetsWhen(row) {
+    if (row.resetsAt) return new Date(row.resetsAt).toLocaleTimeString(this.brain.lang === 'en' ? 'en' : 'pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return String(row.resets || '').replace(/^.*?,\s*/, '') || '…';
+  }
+
+  // "quanto do limite do claude?": what she knows, asked again if it's old
+  async usageLine() {
+    const t = this.t;
+    const u = (await this.host.claudeUsage?.().catch(() => null)) || this.usage;
+    const rows = (u?.rows || []).filter((r) => r.key === 'session' || r.key === 'week');
+    if (!rows.length) return t.usageNone;
+    const get = (k) => rows.find((r) => r.key === k);
+    const s = get('session');
+    const w = get('week');
+    return fmt(t.usageNow, { session: s ? Math.round(s.pct) : '?', week: w ? Math.round(w.pct) : '?', when: s ? this.resetsWhen(s) : '…' });
   }
 
   // a step of Claude's, in her ticker
@@ -151,24 +226,48 @@ export class Hands {
     this.asking = true;
     const t = this.t;
     const { action, quote } = this.describe(g);
+    let gone = false;
+    let where = null; // 'chat' | 'guide': where her question is on screen
+    this.current = {
+      g,
+      gone: () => {
+        gone = true;
+        if (where === 'chat') this.chat.panel.setActions([]);
+        if (where === 'guide') this.guide.answer('gone');
+        finish();
+      },
+    };
+    let over = false;
+    const finish = () => {
+      if (over) return;
+      over = true;
+      this.current = null;
+      this.asking = false;
+      this.nextAsk();
+    };
     const line = fmt(t.ask, { action });
     const actions = [{ id: 'yes', label: t.allow, primary: true }, { id: 'no', label: t.deny }, { id: 'all', label: t.allowAll }];
     this.voice.play('alert');
     const decide = (id) => {
+      if (gone || over) return finish();
       if (id === 'all') this.allowAll = true;
       const allow = id === 'yes' || id === 'all';
       this.host.gateAnswer(g.id, allow, allow ? '' : 'The user denied this step.');
       if (!allow) this.panel.setTicker({ verb: '✕', target: t.denied, error: true });
-      this.asking = false;
-      this.nextAsk();
+      finish();
     };
     // in her chat if it's open, else she comes to you with it
     if (this.chat.interject(`${line}\n${quote}`, actions, (id) => {
       this.chat.panel.setActions([]);
       decide(id);
-    })) return;
+    })) {
+      where = 'chat';
+      return;
+    }
     let picked = 'no';
     await this.guide.scene(async () => {
+      if (gone) return;
+      where = 'guide';
       this.capri.wake();
       this.capri.perform('alarm', this.capri.towardCenter());
       picked = await this.guide.ask({ face: 'wide', line, quote, actions });

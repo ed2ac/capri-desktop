@@ -581,7 +581,7 @@ export const LINES = {
       notFound: 'I don’t see “{app}” open on your PC.',
       // opening an app or a game, the music, a website
       openIt: 'Open {app}', opened: '{app}: on it.', notInstalled: 'I can’t find “{app}” on your PC.',
-      music: 'Looking up “{song}” on Spotify.', siteIt: 'Open {site}', siteOpened: '{site}: open.',
+      music: 'Looking up “{song}” on Spotify.', siteIt: 'Open {site}', siteOpened: '{site}: open.', siteOpenedIn: '{site}: open in {browser}.', siteNoBrowser: 'No {browser} on this PC: {site} opened in your usual browser.',
       youtube: 'Here you go: {title}.', youtubeSearch: 'Looking up “{song}” on YouTube.',
       web: 'Searching “{query}” on Google.',
       robloxPlay: 'Starting {game} on Roblox for you.', robloxPage: '{game}: opening its Roblox page.', robloxNone: 'Can’t find “{game}” on Roblox.',
@@ -956,6 +956,13 @@ export const LINES = {
     // her hands: Claude Code doing tasks (hands.js)
     hands: {
       offerProject: 'I can put Claude on the {project} project: it works on the code and I ask you before every step.',
+      usageHigh: 'Hey, Claude has used {pct}% of the {which}. It resets at {when}; go easy on big tasks.',
+      usageFull: 'Claude is at {pct}% of the {which}! It resets at {when}; until then it may stop halfway.',
+      usageSession: '5-hour session', usageWeek: 'week',
+      usageNow: 'Claude’s limit: {session}% of the 5-hour session (resets at {when}) and {week}% of the week.',
+      usageNone: 'I couldn’t see Claude’s limit right now (is Claude Code installed in WSL?).',
+      offerFolder: 'Found the folder {folder}. Shall I put Claude to work in it? I\'ll ask you before every step.',
+      noFolder: 'I couldn\'t find the folder “{folder}”. Tell me its exact path (like C:\\Users\\you\\folder or ~/dev/folder)?',
       resume: 'Carry on with it', fresh: 'Start over', fixIt: 'Ask Claude to look',
       offer: 'I can put Claude on it: it works on your files and I ask you before every step.',
       start: 'Go ahead', no: 'Not now',
@@ -1094,6 +1101,19 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // who's at the PC (faceid.js)
+    face: {
+      notOn: 'Turn the camera on first (Camera and sounds › Use my camera) and I’ll learn your face.',
+      enrollLook: 'Look at the camera for a few seconds… that’s it, hold still. Memorizing your face.',
+      enrollDone: 'Done, {name}. Now I’ll know you anywhere.', enrollFail: 'I couldn’t see your face well. Try with more light, facing the camera.',
+      guest: ['Hi! You must be {who}. Nice to meet you, I’m Capri.', 'Hello! You’re {who}, right? Make yourself at home, I just live here.'],
+      stranger: ['Hey… who are you? Where’s {owner}?', 'Hm. I don’t know you. Does {owner} know you’re here?'],
+      ownerBack: ['You’re back, {name}! I was getting suspicious.', 'Oh, it’s you again. Phew.'],
+      ownerFallback: 'my human',
+      introduced: 'Nice to meet you, {name}! Now I’ll recognize you.', introNone: 'I don’t see anyone new on the camera right now.',
+      allowSet: 'Noted: {who} may use the PC ({day}). I’ll be polite.', allowList: 'Who may use the PC:',
+      allowNone: 'Nobody but you has permission right now.', allowCancel: 'Permission removed.',
+    },
     look: {
       ask: 'Can I take a look at your screen?',
       local: 'A picture of your screen goes to your AI, on this PC ({model}), and I tell you what I make of it. Nothing leaves your machine, and I don’t keep the picture.',
@@ -1745,7 +1765,7 @@ export const LINES = {
       notFound: 'Não vejo “{app}” aberto no seu PC.',
       // abrir um app ou um jogo, a música, um site
       openIt: 'Abrir {app}', opened: '{app}: abrindo.', notInstalled: 'Não acho “{app}” no seu PC.',
-      music: 'Procurando “{song}” no Spotify.', siteIt: 'Abrir {site}', siteOpened: '{site}: aberto.',
+      music: 'Procurando “{song}” no Spotify: é só dar play no primeiro.', siteIt: 'Abrir {site}', siteOpened: '{site}: aberto.', siteOpenedIn: '{site}: aberto no {browser}.', siteNoBrowser: 'Não achei o {browser} aqui, então abri {site} no seu navegador de sempre.',
       youtube: 'Lá vai: {title}.', youtubeSearch: 'Vou procurar “{song}” no YouTube.',
       web: 'Procurando “{query}” no Google.',
       robloxPlay: 'Tô abrindo {game} no Roblox.', robloxPage: '{game}: abrindo a página no Roblox.', robloxNone: 'Não achei “{game}” no Roblox.',
@@ -2117,6 +2137,13 @@ export const LINES = {
     // as mãos dela: o Claude Code fazendo tarefas (hands.js)
     hands: {
       offerProject: 'Posso colocar o Claude no projeto {project}: ele mexe no código e eu te peço permissão a cada passo.',
+      usageHigh: 'Ei, o Claude já usou {pct}% da {which}. Renova às {when}, vai com calma nas tarefas grandes.',
+      usageFull: 'O Claude tá em {pct}% da {which}! Renova às {when}; até lá ele pode parar no meio.',
+      usageSession: 'sessão de 5 horas', usageWeek: 'semana',
+      usageNow: 'Limite do Claude: {session}% da sessão de 5 h (renova às {when}) e {week}% da semana.',
+      usageNone: 'Não consegui ver o limite do Claude agora (o Claude Code tá instalado no WSL?).',
+      offerFolder: 'Achei a pasta {folder}. Ponho o Claude pra trabalhar nela? Eu te peço permissão a cada passo.',
+      noFolder: 'Não achei a pasta “{folder}”. Me diz o caminho certinho (tipo C:\\Users\\você\\pasta ou ~/dev/pasta)?',
       resume: 'Continuar a conversa', fresh: 'Começar do zero', fixIt: 'Pedir pro Claude olhar',
       offer: 'Posso colocar o Claude nisso: ele mexe nos arquivos e eu te peço permissão a cada passo.',
       start: 'Pode fazer', no: 'Agora não',
@@ -2255,6 +2282,19 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // quem tá no PC (faceid.js)
+    face: {
+      notOn: 'Liga a câmera primeiro (Câmera e sons › Usar minha câmera) que eu aprendo seu rosto.',
+      enrollLook: 'Olha pra câmera uns segundos… isso, parado. Tô decorando seu rosto.',
+      enrollDone: 'Pronto, {name}. Agora eu te reconheço de qualquer jeito.', enrollFail: 'Não consegui ver seu rosto direito. Tenta com mais luz, de frente pra câmera.',
+      guest: ['Oi! Você deve ser {who}. Prazer, eu sou a Capri.', 'Olá! Você é {who}, né? Fica à vontade, eu só moro aqui.'],
+      stranger: ['Ei… quem é você? Cadê o {owner}?', 'Hm. Eu não te conheço. O {owner} sabe que você tá aqui?'],
+      ownerBack: ['Voltou, {name}! Já tava estranhando.', 'Ah, é você de novo. Ufa.'],
+      ownerFallback: 'meu humano',
+      introduced: 'Prazer, {name}! Agora eu te reconheço.', introNone: 'Não tô vendo ninguém novo na câmera agora.',
+      allowSet: 'Anotado: {who} pode usar o PC ({day}). Vou ser educada.', allowList: 'Quem pode usar o PC:',
+      allowNone: 'Ninguém além de você tem permissão agora.', allowCancel: 'Permissão removida.',
+    },
     look: {
       ask: 'Posso dar uma olhada na sua tela?',
       local: 'Uma imagem da sua tela vai pra sua IA, neste PC ({model}), e eu te digo o que acho. Nada sai da sua máquina, e eu não guardo a imagem.',
@@ -2887,7 +2927,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }
