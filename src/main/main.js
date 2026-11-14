@@ -436,7 +436,7 @@ async function tabsDo({ action, query = '', ids = [] } = {}) {
     if (!r.ok) return r;
     if (action === 'count') {
       const sites = {};
-      for (const t of r.tabs) { try { const h = new URL(t.url).hostname.replace(/^www\./, ''); if (h) sites[h] = (sites[h] || 0) + 1; } catch { /* not a page */ } }
+      for (const t of r.tabs) { try { const u = new URL(t.url); const h = u.hostname.replace(/^www\./, ''); if (h && /^https?:$/.test(u.protocol)) sites[h] = (sites[h] || 0) + 1; } catch { /* not a page */ } } // the browser's own pages aren't sites
       return { ok: true, count: r.tabs.length, top: Object.entries(sites).sort((a, b) => b[1] - a[1]).slice(0, 3) };
     }
     const found = r.tabs.filter(match);
