@@ -26,7 +26,8 @@ export class Converse {
     this.talking = false;    // a conversation started by voice: her questions in it are listened to
     this.startedAt = Date.now();
     this.lastStarter = Date.now();
-    this.gap = [20, 40];     // minutes between conversations she starts (her menu › How talkative)
+    this.gap = [45, 90];     // minutes between conversations she starts (her menu › How talkative)
+    this.lastListen = 0;
     setInterval(() => this.maybeStart().catch(() => {}), 60000);
   }
 
@@ -37,7 +38,7 @@ export class Converse {
   configure({ converse, micAsked, chatty }) {
     this.on = converse !== false;
     this.allowed = micAsked === true;
-    this.gap = { low: [60, 120], normal: [20, 40], high: [8, 18] }[chatty] || [20, 40];
+    this.gap = { low: [120, 240], normal: [45, 90], high: [20, 40] }[chatty] || [45, 90];
   }
 
   // panel.js said something: one of her own questions is worth listening for
@@ -57,6 +58,9 @@ export class Converse {
   // her question on screen: a few seconds of listening for an answer
   async listen(question) {
     if (!this.ready() || (this.chat.open && !this.talking)) return;
+    // not every question of hers: the microphone opens at most every 8 minutes, unless you're talking
+    if (!this.talking && Date.now() - this.lastListen < 8 * 60000) return;
+    this.lastListen = Date.now();
     this.listening = true;
     let stream;
     try {

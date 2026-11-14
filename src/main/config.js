@@ -51,6 +51,7 @@ const DEFAULTS = {
   ghSeen: [],
   ctxReminders: [], // "when I open VS Code, remind me to…": [{ id, app, text, made }] (main.js)
   gestures: true, // your hands and head through the camera: waves, thumbs up, "shh", eye contact (gestures.js)
+  panelSize: 'medium', // her panels and their text: 'small', 'medium' or 'large' (capri.css)
   converse: true, // she listens a few seconds for your answer when she asks you something (converse.js)
   lockSnap: false, // a photo of a stranger at the locked PC, in ~/Capri/visitas (lockwatch.js)
   workshopAuto: true, // her coding workshop window opens (in the background) when Claude starts a task

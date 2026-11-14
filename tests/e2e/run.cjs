@@ -152,6 +152,8 @@ async function main() {
 
   await check('stage 3: chat games, tabs (extension not loaded yet: says so)', "const c = d.chat; const kinds = ['vamos jogar forca', 'adivinha o número', 'quantas abas eu tenho?'].map((x) => { const r = c.asked(x) || {}; return r.game || r.kind; }); const tabs = await h.tabsDo({ action: 'count' }); return { kinds: kinds.join(), tabs: tabs.ok || tabs.error }", (v) => v.kinds === 'hangman,number,tabs' && (v.tabs === 'offline' || v.tabs === true));
 
+  await check('her panels: medium by default, smaller than before; her chat closes by itself', "const w = parseFloat(getComputedStyle(document.querySelector('.panel')).width); return { size: document.documentElement.dataset.panel, w: Math.round(w), auto: typeof d.chat.idleClose }", (v) => v.size === 'medium' && v.w <= 320 && v.auto === 'function');
+
   // whatever was touched, as it was
   await ev(`await h.setConfig({ micAsked: ${JSON.stringify(original.micAsked ?? false)} }); return true`);
   await sleep(1000);

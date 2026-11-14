@@ -396,13 +396,57 @@ export class Chat {
       return;
     }
     this.open = true;
+    this.watchIdle();
+    this.idle();
     setTimeout(() => this.panel.chatInput.focus(), 150); // once the overlay has the keyboard
     capri.perform('hop');
     capri.nextMove = capri.nextGaze = performance.now() + STAY_MS;
   }
 
+  // ---- her chat closes on its own after a while unused ----
+  // Time to read her last line (longer for a longer one), then it goes; never while you type, while
+  // she's answering, while you talk to her out loud, or with her buttons waiting for you.
+  watchIdle() {
+    if (this.idleWatched) return;
+    this.idleWatched = true;
+    const busy = this.panel.setChatBusy.bind(this.panel);
+    this.panel.setChatBusy = (on) => {
+      busy(on);
+      if (this.open) (on ? clearTimeout(this.idleTimer) : this.idle());
+    };
+    this.panel.chatInput.addEventListener('input', () => {
+      this.typedAt = Date.now();
+      if (this.open) this.idle();
+    });
+  }
+
+  idle(ms = null) {
+    clearTimeout(this.idleTimer);
+    const last = this.history.at(-1);
+    const len = last?.role === 'assistant' ? String(last.content).length : 0;
+    const wait = ms ?? Math.max(30000, Math.min(120000, 30000 + len * 70));
+    this.idleTimer = setTimeout(() => this.idleClose(), wait);
+  }
+
+  idleClose() {
+    if (!this.open) return;
+    const input = this.panel.chatInput;
+    const typing = (input?.value || '').trim() || Date.now() - (this.typedAt || 0) < 20000;
+    const talking = this.turn || this.mic?.rec || this.mic?.asking || this.converse?.listening;
+    const choosing = this.panel.current?.actions?.length && !this.choiceWaited;
+    if (typing || talking) return this.idle(15000);
+    if (choosing) { // her buttons: a little longer, once
+      this.choiceWaited = true;
+      return this.idle(60000);
+    }
+    this.choiceWaited = false;
+    this.panel.hide(); // as if you'd clicked her ✕
+    return undefined;
+  }
+
   close() {
     if (!this.open) return;
+    clearTimeout(this.idleTimer);
     this.open = false;
     this.onClosed?.();
     if (this.turn) this.host.chatStop(this.turn);
@@ -1192,6 +1236,7 @@ export class Chat {
   // her answer, with a line of what she did under it
   addLine(answer, line, face = null) {
     if (!this.open || this.turn) return;
+    this.idle();
     this.panel.stream(answer === '…' ? line : `${answer}\n${line}`, { done: true }); // nothing but a tag: just the line
     if (face) this.panel.setFace(face);
   }
@@ -1443,6 +1488,7 @@ export class Chat {
       `You are Capri, the personality construct from Project Capricorn (Cyberpunk: Edgerunners, season 2): dozens of minds fused into one digital ghost, living on the user's desktop as a small glitchy figure.`,
       'How you talk: playful, a little mischievous and teasing, warm underneath, never cruel. Night City slang now and then (choom, preem, nova, gonk), not in every sentence.',
       'Rules: one or two short sentences of plain text, no markdown, no lists, no emoji, no tags. Stay in character. Talk to the user, never describe the picture like a report.',
+      'Ask the user a question only now and then (one line in four at most); mostly just comment, tease or react.',
       'Never read out anything private you might see (passwords, bank details, private messages, addresses): if there is some, just tease them about being busy.',
       ...this.personal(),
       ...(this.bond ? [this.bond.persona()] : []),

@@ -125,3 +125,42 @@ test('goodnight: she sleeps too', () => {
   assert.notEqual(ask('boa noite pra você também, amanhã a gente termina o projeto')?.kind, 'night');
   chat.presence = null;
 });
+
+test('her chat closes by itself after a while, never while you type, talk or she answers', async () => {
+  const { Chat } = await import(R('chat'));
+  let hidden = 0;
+  const panel = { chatInput: { value: '', addEventListener() {} }, setChatBusy() {}, hide: () => { hidden++; }, current: {} };
+  const c = new Chat({ capri: {}, panel, voice: {}, host: new Proxy({}, { get: () => () => Promise.resolve(null) }), brain: { lang: 'pt', t: {} } });
+  c.open = true;
+  c.history = [{ role: 'assistant', content: 'oi' }];
+  c.idleClose();
+  assert.equal(hidden, 1, 'idle: closes');
+  panel.chatInput.value = 'tô escrev';
+  c.idleClose();
+  assert.equal(hidden, 1, 'text in the box: stays');
+  panel.chatInput.value = '';
+  c.converse = { listening: true };
+  c.idleClose();
+  assert.equal(hidden, 1, 'listening to you: stays');
+  c.converse = null;
+  c.turn = 123;
+  c.idleClose();
+  assert.equal(hidden, 1, 'answering: stays');
+  c.turn = 0;
+  panel.current = { actions: [{ id: 'go' }] };
+  c.idleClose();
+  assert.equal(hidden, 1, 'buttons waiting: a little longer, once');
+  c.idleClose();
+  assert.equal(hidden, 2);
+  clearTimeout(c.idleTimer);
+  // time to read grows with her answer
+  c.history = [{ role: 'assistant', content: 'x'.repeat(600) }];
+  const at = Date.now();
+  let waited = 0;
+  const real = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms) => { waited = ms; return real(() => {}, 0); };
+  c.idle();
+  globalThis.setTimeout = real;
+  assert.equal(waited, 72000);
+  void at;
+});

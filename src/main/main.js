@@ -780,7 +780,7 @@ function regroupTray(t, items) {
     [t.groupBehavior, [t.chatty, t.pranks, t.wander, t.possess, t.jealous, t.closePages, t.aiLines, t.callQuiet, t.obsMode, t.rest]],
     [t.groupHealth, [t.breaks, t.eyeBreaks]],
     [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.watch]],
-    [t.groupLooks, [t.size, t.theme, t.motion, t.display, t.sound, t.screen]],
+    [t.groupLooks, [t.size, t.panelSize, t.theme, t.motion, t.display, t.sound, t.screen]],
   ];
   const taken = new Set();
   const built = groups.map(([label, labels]) => {
@@ -1062,6 +1062,12 @@ function rebuildTray() {
         })),
         { label: t.watchNone, type: 'radio', checked: !cfg.claude, click: () => updateConfig({ claude: false }) },
       ],
+    },
+    {
+      label: t.panelSize,
+      submenu: ['small', 'medium', 'large'].map((size) => ({
+        label: t.panelSizes[size], type: 'radio', checked: (cfg.panelSize || 'medium') === size, click: () => updateConfig({ panelSize: size }),
+      })),
     },
     {
       label: t.theme,

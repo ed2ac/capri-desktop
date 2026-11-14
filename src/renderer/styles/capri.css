@@ -69,7 +69,13 @@
   --font-display: 'Chakra Petch', 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 
-  --text-line: clamp(15px, calc(0.45vw + 8.5px), 19px);
+  --text-line: clamp(13px, calc(0.34vw + 7.5px), 16px);
+  /* her panels' size (her menu › Looks › Panel size: app.js sets data-panel) */
+  --panel-w: clamp(250px, 17vw, 320px);
+  --chat-w: clamp(280px, 20vw, 360px);
+  --reply-w: clamp(300px, 25vw, 440px);
+  --report-w: clamp(300px, 22vw, 380px);
+  --face: 46px;
   --text-meta: 10px;
   --text-data: 11px;
 
@@ -143,7 +149,7 @@ body {
   left: 0;
   top: 0;
   z-index: 3;
-  width: clamp(290px, 21vw, 380px);
+  width: var(--panel-w);
   color: var(--paper);
   will-change: transform;
 }
@@ -219,13 +225,13 @@ body {
 .panel__plate {
   position: relative;
   display: grid;
-  grid-template-columns: 58px 1fr;
-  gap: 12px;
-  padding: 14px 16px 18px 14px;
+  grid-template-columns: var(--face) 1fr;
+  gap: 10px;
+  padding: 11px 13px 15px 11px;
   /* a little barcode under her face */
   background:
     repeating-linear-gradient(90deg, var(--ink-2) 0 2px, transparent 2px 3px, var(--ink-2) 3px 4px, transparent 4px 7px)
-      left 14px bottom 9px / 46px 6px no-repeat,
+      left 11px bottom 7px / 38px 5px no-repeat,
     var(--ink);
   /* square corners but one, cut off, and a shallow tab taken out of the top edge */
   clip-path: polygon(
@@ -237,8 +243,8 @@ body {
 
 .panel__face {
   margin: 2px 0 0;
-  width: 58px;
-  height: 58px;
+  width: var(--face);
+  height: var(--face);
   background: var(--frame);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
 }
@@ -393,7 +399,7 @@ html[data-motion='reduced'] .panel__bar {
 
 /* Claude's whole answer, when you weren't on its window to read it: wider panel, scrolls */
 .panel.has-reply {
-  width: clamp(340px, 30vw, 520px);
+  width: var(--reply-w);
 }
 
 .panel__reply {
@@ -540,7 +546,7 @@ html[data-motion='reduced'] .panel__bar {
 /* ---------- her report card (mission log) ---------- */
 
 .panel.has-report {
-  width: clamp(340px, 26vw, 440px);
+  width: var(--report-w);
 }
 
 /* a card with a yellow band on top, like the site's */
@@ -714,7 +720,7 @@ html[data-motion='reduced'] .panel__bar {
 /* ---------- talking to her (chat) ---------- */
 
 .panel.is-chat {
-  width: clamp(320px, 24vw, 420px);
+  width: var(--chat-w);
 }
 
 /* your line up top like a prompt, her answer under it */
@@ -952,4 +958,22 @@ html[data-motion='reduced'] .panel__line.is-streaming::after,
 html[data-motion='reduced'] .panel__line.is-glitching,
 html[data-motion='reduced'] .panel[data-kind='alert'] .panel__state {
   animation: none !important;
+}
+
+/* her panels smaller or bigger (her menu › Looks › Panel size) */
+html[data-panel='small'] {
+  --text-line: clamp(12px, calc(0.28vw + 7px), 14px);
+  --panel-w: clamp(220px, 14.5vw, 280px);
+  --chat-w: clamp(250px, 17vw, 310px);
+  --reply-w: clamp(270px, 21vw, 380px);
+  --report-w: clamp(270px, 19vw, 330px);
+  --face: 38px;
+}
+html[data-panel='large'] {
+  --text-line: clamp(15px, calc(0.45vw + 8.5px), 19px);
+  --panel-w: clamp(290px, 21vw, 380px);
+  --chat-w: clamp(320px, 24vw, 420px);
+  --reply-w: clamp(340px, 30vw, 520px);
+  --report-w: clamp(340px, 26vw, 440px);
+  --face: 58px;
 }

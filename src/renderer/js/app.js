@@ -88,6 +88,11 @@ async function boot() {
     document.documentElement.dataset.theme = theme || 'nightcity';
   };
   applyTheme(config.theme);
+  // her panels' size (her menu › Looks › Panel size): small, medium, large
+  const applyPanelSize = (size) => {
+    document.documentElement.dataset.panel = ['small', 'large'].includes(size) ? size : 'medium';
+  };
+  applyPanelSize(config.panelSize);
 
   const fx = new FxLayer(document.getElementById('fx'), {
     cutins: Object.fromEntries(CUTINS.map((name, i) => [name, cutins[i]])),
@@ -758,7 +763,7 @@ async function boot() {
   gestures.configure(config);
   camera.gestures = gestures;
   if (camera.Vision) gestures.load(camera.files, camera.Vision);
-  Object.assign(chat, { gestures, art, camera, activity, presence, games: new Games({ brain, host, chat }) });
+  Object.assign(chat, { gestures, art, camera, activity, presence, converse, mic, games: new Games({ brain, host, chat }) });
   chat.onClosed = () => converse.onClose();
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
@@ -974,6 +979,7 @@ async function boot() {
     capri.restOn = cfg.rest || 'corner';
     applyMotion(cfg.motion);
     applyTheme(cfg.theme);
+    applyPanelSize(cfg.panelSize);
     if ((cfg.claude === false && brain.watching) || cfg.assistant !== brain.assistant) {
       guide.answer(null);
       panel.hide();
