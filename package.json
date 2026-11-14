@@ -20,7 +20,10 @@
     "shell:uninstall": "node scripts/install-shell.js --uninstall",
     "check:llm": "node scripts/check-llm.js",
     "test:hooks": "node --test tests/hooks.test.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "test": "node --test tests/hooks.test.js \"tests/unit/*.test.mjs\"",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node tests/e2e/run.cjs"
   },
   "keywords": [
     "claude-code",

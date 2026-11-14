@@ -620,6 +620,15 @@ under her and she falls), sleeping down to her mask, and putting herself away in
 It's also in the tray menu, in her language; from the command line it's in English, or add one: `npm run demo -- fr`
 (or `es`, `pt`, `ru`).
 
+## Tests
+
+- `npm test`: the hooks' tests and the unit tests (Portuguese intents, the language filter, the calendar, her heart,
+  untranslated lines, boot order, her staying put while a question is on screen…). Seconds, in WSL or Windows.
+- `npm run test:e2e` (on Windows, in the project folder): starts the installed Capri with Chromium's debugger, checks
+  from inside her (modules, Ollama and her local model, lines in her language, the face and sound models, a question
+  that doesn't run away from your click, her name not asking anything), puts back any setting it touched, restarts her.
+- What no test does: click through her see-through window like your mouse, hear your voice, see your face.
+
 ## Sounds
 
 Every sound is synthesized live (Web Audio), nothing copyrighted ships with the repo.

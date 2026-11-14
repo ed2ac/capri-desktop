@@ -59,7 +59,7 @@ export class Senses {
   get free() {
     const c = this.capri;
     // (in the middle of a little animation is fine: she answers over it)
-    return !c.busy && !c.dragging && !c.hidden && !c.stowed && !c.dormant && c.mode !== 'alert' && !this.play?.game;
+    return !c.busy && !c.dragging && !c.hidden && !c.stowed && !c.dormant && c.mode !== 'alert' && !this.play?.game && !this.guide?.running;
   }
 
   // a word, at most once per `every` ms for this kind

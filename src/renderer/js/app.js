@@ -291,6 +291,7 @@ async function boot() {
   const look = new Look({ capri, panel, brain, chat, guide, host, fx, voice, active: () => performance.now() - lastMove });
   look.configure(config);
   chat.look = look; // "regarde mon écran" in her chat
+  // (her heart, below, makes her look more when she's bored)
   // commenting on what you do (activity.js): the app in front and its title, if you turned it on
   const activity = new Activity({ capri, panel, brain, chat, guide, host, look, active: () => performance.now() - lastMove });
   activity.configure(config);
@@ -632,6 +633,7 @@ async function boot() {
   voice.heart = heart;
   play.heart = heart;
   activity.heart = heart;
+  look.heart = heart;
   heart.ignored = () => Date.now() - play.attentionAt > 20 * 60000 && performance.now() - lastMove < 90000;
   let heartSent = '';
   const sendHeart = () => {
@@ -661,6 +663,7 @@ async function boot() {
   const senses = new Senses({ capri, panel, brain, voice, heart, bond, play, guide, host });
   senses.configure(config);
   const life = new Life({ capri, panel, brain, voice, fx, heart, play, activity });
+  life.guide = guide;
   // her eyes on you, through your camera (camera.js)
   const camera = new Camera({ capri, panel, brain, host, chat, guide, voice, heart, bond, look });
   camera.configure(config);
@@ -670,11 +673,11 @@ async function boot() {
   hearing.configure(config);
   // her name: she perks up and listens to what you say next (mic.js)
   hearing.onWake = () => {
-    if (mic.rec || chat.turn) return;
+    if (mic.rec || mic.asking || chat.turn || guide.running) return;
     capri.wake();
     capri.perform('curious', capri.towardCenter());
     voice.play('tick');
-    mic.toggle();
+    mic.toggle({ asked: true }); // "Hear the room" + "Answer when I call her" on: that was your yes
   };
   capri.onPointer = (x, y) => {
     play.onPointer(x, y);

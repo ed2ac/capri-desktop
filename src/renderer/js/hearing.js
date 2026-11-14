@@ -169,7 +169,7 @@ export class Hearing {
 
   free() {
     const c = this.capri;
-    return !c.busy && !c.hidden && !c.stowed && c.mode !== 'alert';
+    return !c.busy && !c.hidden && !c.stowed && c.mode !== 'alert' && !this.guide?.running;
   }
 
   react(kind) {

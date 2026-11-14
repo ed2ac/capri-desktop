@@ -994,9 +994,24 @@ let localListAt = 0;
 let localPaused = false;
 let localQueue = Promise.resolve(); // one at a time: a small GPU, and her chat may want it too
 
+// Ollama asleep (not started with Windows, or quit): she wakes it up, once in a while at most,
+// if it's installed. Without it, everything she says on her own goes back to her written lines.
+let ollamaWokenAt = 0;
+async function wakeOllama() {
+  if (Date.now() - ollamaWokenAt < 5 * 60000) return false;
+  ollamaWokenAt = Date.now();
+  const state = await setup.ollamaState().catch(() => null);
+  if (!state || state.running) return Boolean(state?.running);
+  if (!state.installed) return false;
+  const r = await setup.startOllama().catch(() => ({ ok: false }));
+  if (r.ok) console.log('[capri] Ollama was asleep: started it');
+  return r.ok;
+}
+
 async function localModel(cfg = config.load()) {
   if (!localList || Date.now() - localListAt > 60000) {
     localList = await ollama.models().then((list) => list.filter((m) => !ollama.isCloud(m)), () => null);
+    if (!localList && (await wakeOllama())) localList = await ollama.models().then((list) => list.filter((m) => !ollama.isCloud(m)), () => null);
     localListAt = Date.now();
   }
   if (!localList?.length) return null;
@@ -1616,6 +1631,8 @@ function main() {
     checkShellHook();
     sendToEntry();
     wakeSync();
+    // her local model, ready for her: Ollama started if it's asleep (it may not start with Windows)
+    setTimeout(() => wakeOllama().then(() => refreshModels()).catch(() => {}), 4000);
     // started with a file (Send to › Capri while she wasn't running)
     const first = fileArg(process.argv);
     if (first) setTimeout(() => sendCommand('file', { path: first }), 9000);

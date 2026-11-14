@@ -24,13 +24,25 @@ export class Mic {
     this.asked = Boolean(micAsked);
   }
 
-  async toggle() {
+  // `asked`: you already said yes elsewhere (her name heard: you turned on "Hear the room" and
+  // "Answer when I call her"), so she just listens, no question
+  async toggle({ asked = false } = {}) {
     if (this.rec) return this.stop();
+    if (this.asking) return undefined; // her question is already on screen
+    if (asked && !this.asked) {
+      this.asked = true;
+      this.host.setConfig({ micAsked: true });
+    }
     if (!this.asked) {
+      this.asking = true;
       let yes = false;
-      await this.guide.scene(async () => {
-        yes = (await this.guide.ask({ face: 'look', line: this.t.ask, quote: this.t.where, actions: [{ id: 'yes', label: this.t.yes, primary: true }, { id: 'no', label: this.t.no }] })) === 'yes';
-      });
+      try {
+        await this.guide.scene(async () => {
+          yes = (await this.guide.ask({ face: 'look', line: this.t.ask, quote: this.t.where, actions: [{ id: 'yes', label: this.t.yes, primary: true }, { id: 'no', label: this.t.no }] })) === 'yes';
+        });
+      } finally {
+        this.asking = false;
+      }
       if (!yes) return undefined;
       this.asked = true;
       this.host.setConfig({ micAsked: true });

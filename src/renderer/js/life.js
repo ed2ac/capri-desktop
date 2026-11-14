@@ -37,9 +37,15 @@ export class Life {
     setInterval(() => this.pace(), 5000);
   }
 
+  // a question of hers on screen (her guide, buttons in her panel): she stays put, or the panel
+  // would walk away from under your click
+  holding() {
+    return Boolean(this.guide?.running || this.panel.current?.actions?.length || this.panel.current?.guide);
+  }
+
   pace() {
     const c = this.capri;
-    if (c.mode !== 'idle' || c.busy || !c.wander) return;
+    if (c.mode !== 'idle' || c.busy || !c.wander || this.holding()) return;
     const h = this.heart;
     const lively = h ? (h.energy / 100) * (0.6 + h.boredom / 120) : 0.6;
     const wait = 30000 - lively * 18000; // ~12 s lively and bored … ~30 s drained
@@ -70,6 +76,7 @@ export class Life {
   }
 
   step() {
+    if (this.holding()) return; // she stays where your click is going
     this.lastMove = performance.now();
     this.capri.lastActivity = performance.now(); // what she does counts as doing something
     this.homeIn = rand(120000, 240000);

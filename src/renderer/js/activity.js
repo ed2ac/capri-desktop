@@ -15,7 +15,7 @@ const ACTIVE_MS = 90 * 1000;              // only when you're there (the pointer
 const KEEP = 10;                          // what she keeps of the timeline
 const LONG = 45 * 60 * 1000;              // this long on the same app: worth a word on its own
 // how often she talks about it, her menu › How talkative: minutes between two comments
-const GAPS = { low: [15, 30], normal: [6, 14], high: [2, 6] };
+const GAPS = { low: [10, 20], normal: [3, 8], high: [0.7, 2.5] };
 // what kind of thing it is, how long before it's worth a word, and how long before the same kind again
 const KINDS = {
   search: { dwell: 15000, again: 15 * 60000 },

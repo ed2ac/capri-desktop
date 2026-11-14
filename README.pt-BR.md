@@ -630,6 +630,15 @@ debaixo dela e ela cai), dormir até virar só a máscara, e se guardar no canto
 Também está no menu da bandeja, no idioma dela; pela linha de comando é em inglês, ou passe um idioma: `npm run demo -- fr`
 (ou `es`, `pt`, `ru`).
 
+## Testes
+
+- `npm test`: os testes dos hooks e os de unidade (comandos em português, filtro de idioma, agenda, coração, falas
+  sem tradução, ordem de inicialização, ela parada enquanto um modal tá aberto…). Rodam em segundos, no WSL ou no Windows.
+- `npm run test:e2e` (no Windows, na pasta do projeto): abre a Capri instalada com o depurador do Chromium, confere de
+  dentro dela (módulos, Ollama e o modelo local, falas em português, modelos de rosto e de som, o modal que não foge do
+  clique, o "Capri" que não pergunta nada), devolve qualquer configuração que mexeu e reabre ela normal.
+- O que nenhum teste faz: clicar através da janela transparente como o seu mouse, ouvir sua voz ou ver seu rosto.
+
 ## Sons
 
 Todo som é sintetizado ao vivo (Web Audio), nada com direitos autorais vem no repositório.

@@ -8,8 +8,11 @@
 import { fmt, rand, inLang } from './util.js';
 import { clean, mood } from './chat.js';
 
-const FIRST_AFTER = 2 * 60 * 1000; // turned on: her first look a couple of minutes later
-const EVERY = [8, 15];             // then every 8 to 15 minutes…
+const FIRST_AFTER = 30 * 1000;     // turned on: her first look soon
+// no clock: she looks when you've settled on another window, or when she feels like it (more when
+// bored); only a breath between two looks, by her menu › How talkative (minutes)
+const FLOOR = { low: 10, normal: 3, high: 1 };
+const SETTLE_MS = 15000;           // on a new window this long: worth a look
 const ACTIVE_MS = 90 * 1000;       // …if you're at your PC (the pointer moved lately)…
 const SAME_WINDOW_MS = 25 * 60 * 1000; // …and on another window than last time (or a good while later)
 // what her AI is asked about the picture
@@ -32,14 +35,15 @@ export class Look {
     this.nextAt = 0;
     this.lastFg = null;
     this.lastAt = 0;
-    setInterval(() => this.tick(), 30000);
+    setInterval(() => this.tick(), 8000);
   }
 
   get t() {
     return this.brain.t.look;
   }
 
-  configure({ watchScreen, lookAsked }) {
+  configure({ watchScreen, lookAsked, chatty }) {
+    this.floor = (FLOOR[chatty] || FLOOR.normal) * 60000;
     const on = Boolean(watchScreen);
     if (on && !this.auto) this.nextAt = Date.now() + FIRST_AFTER;
     this.auto = on;
@@ -90,9 +94,15 @@ export class Look {
   tick() {
     if (!this.auto || !this.asked || this.looking || Date.now() < this.nextAt) return;
     if (this.active() > ACTIVE_MS || !this.free()) return;
+    const now = Date.now();
     const fg = this.capri.windows.fg;
-    if (fg === this.lastFg && Date.now() - this.lastAt < SAME_WINDOW_MS) return;
-    this.nextAt = Date.now() + rand(EVERY[0], EVERY[1]) * 60 * 1000;
+    if (fg !== this.seenFg) { this.seenFg = fg; this.fgSince = now; }
+    const since = now - (this.lastAt || 0);
+    if (since < (this.floor || 3 * 60000)) return;
+    const settled = fg !== this.lastFg && now - (this.fgSince || now) > SETTLE_MS;
+    const boredom = this.heart?.boredom ?? 30;
+    const urge = Math.random() < 0.08 + boredom / 400; // a look of her own now and then, checked every few seconds
+    if (!settled && !urge) return;
     this.now();
   }
 
