@@ -32,6 +32,8 @@ import { Art } from './art.js';
 import { LockWatch } from './lockwatch.js';
 import { Converse } from './converse.js';
 import { Gestures } from './gestures.js';
+import { Watch } from './watch.js';
+import { Games } from './games.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -692,23 +694,76 @@ async function boot() {
   const converse = new Converse({ capri, panel, brain, host, chat, guide, voice, life, presence, mic });
   Object.assign(converse, { daily, camera, heart });
   converse.configure(config);
+  // watching something in full screen together (watch.js)
+  const watch = new Watch({ capri, panel, brain, look, play, life, voice });
+  converse.watch = watch;
   const sayShown = panel.say.bind(panel);
   panel.say = (msg) => {
+    if (msg && !watch.allows(msg)) return false; // nothing over the film but what matters
     const shown = sayShown(msg);
     if (shown !== false) converse.saw(msg);
     return shown;
   };
   chat.onAnswered = (answer) => converse.onAnswer(answer);
+  // your GitHub (main github.js): a CI run failed (Claude can look into it), a review, a mention
+  // something of hers on screen you may be answering (a question, buttons, her chat): what can wait, waits
+  const whenFree = (fn, tries = 20) => {
+    if (guide.running || panel.current?.actions?.length || panel.current?.guide || chat.open) {
+      if (tries > 0) setTimeout(() => whenFree(fn, tries - 1), 30000);
+      return;
+    }
+    fn();
+  };
+  host.onGithub?.((news) => whenFree(() => github(news)));
+  const github = (news) => {
+    let list = news;
+    const g = brain.t.github;
+    const hands = chat.hands;
+    // several CI runs failed at once: one word about them, the first one offered to Claude
+    const ciFailed = list.filter((n) => n.reason === 'ci_activity' && /fail|falh|cancel/i.test(n.title));
+    if (ciFailed.length > 1) {
+      const repos = [...new Set(ciFailed.map((n) => n.repo.split('/').pop()))].join(', ');
+      list = [{ ...ciFailed[0], title: fmt(g.ciMany, { count: ciFailed.length, repos }) }, ...list.filter((n) => !ciFailed.includes(n))];
+    }
+    list.forEach((n, i) => setTimeout(() => {
+      const failed = n.reason === 'ci_activity' && /fail|falh|cancel/i.test(n.title);
+      if (n.reason === 'ci_activity' && !failed) return; // a run that went fine: nothing to say
+      const key = failed ? 'ciFailed' : { review_requested: 'review', mention: 'mention', team_mention: 'mention', assign: 'assign', security_alert: 'security' }[n.reason] || 'mention';
+      const line = fmt(g[key], { repo: n.repo, title: n.title });
+      if (presence.note(line)) return; // away: when you're back
+      const project = hands.projects.find((p) => p.name.toLowerCase() === String(n.repo).split('/').pop().toLowerCase());
+      capri.wake();
+      capri.perform(failed ? 'alarm' : 'curious', capri.towardCenter());
+      if (failed && project && !hands.running) {
+        panel.say({
+          kind: 'alert', face: 'wide', line, hold: 20000, tag: 'GITHUB',
+          actions: [{ id: 'fix', label: g.fix, primary: true }, { id: 'no', label: g.later }],
+          onAction: (id) => {
+            panel.hide();
+            if (id === 'fix') hands.start(`The GitHub CI run for ${n.repo} failed ("${n.title}"). Use gh (gh run list, gh run view --log-failed) to find out why, fix it in this project, and run the relevant tests locally to check. Don't push.`, '', { project: project.dir });
+          },
+        });
+      } else panel.say({ kind: 'info', face: 'look', line, hold: 8000, tag: 'GITHUB' });
+    }, i * 9000));
+  };
+  // a reminder tied to an app you just brought up (main.js)
+  host.onCtxRemind?.(({ app, text }) => {
+    capri.wake();
+    capri.perform('alarm', capri.towardCenter());
+    voice.play('remind');
+    panel.say({ kind: 'remind', face: 'wide', line: fmt(brain.t.arrange.ctxFire, { app, text }), hold: 12000 });
+  });
   // your hands and your head (gestures.js), through the camera
   const gestures = new Gestures({ capri, panel, brain, host, heart, voice, life, daily, chat, presence });
   gestures.configure(config);
   camera.gestures = gestures;
   if (camera.Vision) gestures.load(camera.files, camera.Vision);
-  Object.assign(chat, { gestures, art, camera });
+  Object.assign(chat, { gestures, art, camera, activity, presence, games: new Games({ brain, host, chat }) });
   chat.onClosed = () => converse.onClose();
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
+  hearing.watch = watch; // a film on: its sounds aren't the room's (watch.js)
   // her name: she perks up and listens to what you say next (mic.js)
   hearing.onWake = () => {
     if (mic.rec || mic.asking || chat.turn || guide.running) return;
@@ -738,7 +793,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, watch, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -804,6 +859,7 @@ async function boot() {
     activity.onWindows(data);
     onCall(data.call);
     senses?.onWindows(data);
+    watch?.onWindows(data);
   });
   // the windows as they are now: the watcher only speaks again when something changes
   host.windowsNow().then((data) => data && capri.setWindows(data));
@@ -942,6 +998,15 @@ async function boot() {
   });
 
   host.onCommand(async (cmd) => {
+    // her browser extension, copied out for you to load: how
+    if (cmd.name === 'tabsGuide') {
+      const b = brain.t.tabs;
+      guide.scene(async () => {
+        capri.perform('point', capri.towardCenter());
+        await guide.ask({ face: 'look', line: b.guide, quote: fmt(b.guideSteps, { dir: cmd.dir || cmd.payload?.dir || '' }), actions: [{ id: 'ok', label: b.ok, primary: true }] });
+      });
+      return;
+    }
     const t = brain.t;
     switch (cmd.name) {
       case 'teleport':

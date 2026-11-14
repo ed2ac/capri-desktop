@@ -411,15 +411,167 @@ function openProgram(p) {
   win.loadFile(p.page);
 }
 
+// ---- Your GitHub (github.js): every 10 minutes, what's new in your notifications ----
+let ghFirst = true;
+async function githubTick() {
+  const cfg = config.load();
+  if (cfg.githubWatch === false || !overlay) return;
+  const seen = new Set(cfg.ghSeen || []);
+  const fresh = await require('./github').news(seen, ghFirst && !(cfg.ghSeen || []).length).catch(() => null);
+  if (fresh == null) return;
+  ghFirst = false;
+  config.save({ ghSeen: [...seen].slice(-300) });
+  if (fresh.length) overlay.webContents.send('gh:news', fresh.slice(0, 5));
+}
+
+// ---- Your browser's tabs, through her extension (extension/, tabs.js) ----
+const tabs = require('./tabs');
+const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+async function tabsDo({ action, query = '', ids = [] } = {}) {
+  if (!tabs.connected()) return { ok: false, error: 'offline' };
+  const q = words(query).trim();
+  const match = (t) => q && (words(t.title).includes(q) || words(t.url).includes(q.replace(/\s+/g, '')));
+  if (action === 'count' || action === 'find' || action === 'go') {
+    const r = await tabs.ask('list');
+    if (!r.ok) return r;
+    if (action === 'count') {
+      const sites = {};
+      for (const t of r.tabs) { try { const h = new URL(t.url).hostname.replace(/^www\./, ''); if (h) sites[h] = (sites[h] || 0) + 1; } catch { /* not a page */ } }
+      return { ok: true, count: r.tabs.length, top: Object.entries(sites).sort((a, b) => b[1] - a[1]).slice(0, 3) };
+    }
+    const found = r.tabs.filter(match);
+    if (action === 'go') {
+      if (!found[0]) return { ok: false, error: 'notfound' };
+      await tabs.ask('go', { id: found[0].id });
+      return { ok: true, title: found[0].title };
+    }
+    return { ok: true, tabs: found.map((t) => ({ id: t.id, title: t.title })) };
+  }
+  if (action === 'close') return tabs.ask('close', { ids: ids.map(Number).filter(Number.isFinite).slice(0, 200) });
+  if (action === 'save') {
+    const r = await tabs.ask('window');
+    if (!r.ok) return r;
+    const put = r.tabs.filter((t) => /^https?:/i.test(t.url));
+    if (!put.length) return { ok: false, error: 'none' };
+    const set = tabs.keep(tasks.SHOP, put);
+    await tabs.ask('close', { ids: put.filter((t) => !t.active).map((t) => t.id) });
+    return { ok: true, count: set.tabs.length };
+  }
+  if (action === 'restore') {
+    const set = tabs.takeLast(tasks.SHOP);
+    if (!set) return { ok: false, error: 'none' };
+    const r = await tabs.ask('open', { tabs: set.tabs });
+    return r.ok ? { ok: true, count: set.tabs.length } : r;
+  }
+  if (action === 'page') return tabs.ask('page', {}, 10000);
+  return { ok: false, error: 'action' };
+}
+// her extension, put where your browser can load it from (it can't from inside her app's archive)
+function installExtension() {
+  const from = path.join(ROOT, 'extension');
+  const to = path.join(tasks.SHOP, 'extensao');
+  fs.mkdirSync(to, { recursive: true });
+  for (const f of fs.readdirSync(from)) fs.writeFileSync(path.join(to, f), fs.readFileSync(path.join(from, f)));
+  shell.openPath(to);
+  sendCommand('tabsGuide', { dir: to });
+}
+
+// ---- Her corner (src/corner): her drawings, her diary of your days, her achievements ----
+let cornerWin = null;
+function openCorner() {
+  if (cornerWin) { cornerWin.show(); cornerWin.focus(); return; }
+  cornerWin = new BrowserWindow({
+    width: 900, height: 680, minWidth: 480, minHeight: 400, title: 'Cantinho da Capri', autoHideMenuBar: true, backgroundColor: '#14101c',
+    icon: path.join(ROOT, 'assets', 'icons', 'tray.png'),
+    webPreferences: { preload: path.join(__dirname, '..', 'corner', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  cornerWin.loadURL('capri://app/src/corner/corner.html');
+  cornerWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  cornerWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  cornerWin.on('closed', () => { cornerWin = null; });
+}
+const ART_DIR = path.join(tasks.SHOP, 'desenhos');
+function cornerData() {
+  let drawings = [];
+  try {
+    drawings = fs.readdirSync(ART_DIR).filter((f) => /^[\w-]+\.png$/i.test(f)).sort().reverse().slice(0, 60).map((name) => {
+      const m = /^(\d{4})-(\d\d)-(\d\d)_(\d\d)(\d\d)/.exec(name);
+      return { name, when: m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : name, url: `data:image/png;base64,${fs.readFileSync(path.join(ART_DIR, name)).toString('base64')}` };
+    });
+  } catch { /* no drawings yet */ }
+  const { diary = {} } = readMemory();
+  const cfg = config.load();
+  return {
+    drawings, diary: Object.entries(diary).sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([date, text]) => ({ date, text })),
+    achievements: cfg.achievements || [], lang: cfg.language, theme: cfg.theme,
+  };
+}
+
+// ---- Reminders tied to an app ("when I open VS Code, remind me to…"): while there are any, a look
+// every 15 s at the window in front; one coming to the front fires its reminder (once) ----
+let ctxTimer = null;
+const ctxFront = new Map(); // reminder id -> its app was in front at the last look
+function ctxWatch() {
+  if (ctxTimer || process.platform !== 'win32') return;
+  ctxTimer = setInterval(async () => {
+    const list = config.load().ctxReminders || [];
+    if (!list.length) {
+      clearInterval(ctxTimer);
+      ctxTimer = null;
+      return;
+    }
+    const arrange = require('./arrange');
+    const front = (await arrange.list().catch(() => [])).find((w) => !w.min);
+    const fired = [];
+    for (const r of list) {
+      const now = Boolean(front && arrange.pick([front], r.app));
+      const was = ctxFront.get(r.id);
+      ctxFront.set(r.id, now);
+      // the first look only learns where things are: opened later is what counts
+      if (now && was === false) {
+        fired.push(r.id);
+        overlay?.webContents.send('ctx:remind', { app: front.label || front.name, text: r.text });
+      }
+    }
+    if (fired.length) config.save({ ctxReminders: list.filter((r) => !fired.includes(r.id)) });
+  }, 15000);
+}
+
 // ---- Her coding workshop (src/workshop): Claude's task as it goes, its questions, its history, and
 // how much of your Claude plan is used, in a window of its own ----
-const work = { task: null, asks: new Map(), history: [], usage: null };
+const work = { task: null, asks: new Map(), history: [], usage: null, queue: [] };
 const HISTORY_FILE = path.join(tasks.SHOP, '.runs', 'history.json');
+const QUEUE_FILE = path.join(tasks.SHOP, '.runs', 'queue.json');
 try { work.history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')).slice(0, 30); } catch { /* none yet */ }
+try { work.queue = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8')).slice(0, 20); } catch { /* none yet */ }
+
+// Tasks for later: when the plan's 5-hour window has room again ('limit'), at night with the PC
+// left alone ('night'), or simply after the one running ('next'). A look every minute.
+function saveQueue() {
+  try { fs.mkdirSync(path.dirname(QUEUE_FILE), { recursive: true }); fs.writeFileSync(QUEUE_FILE, JSON.stringify(work.queue)); } catch { /* next time */ }
+  workSend();
+}
+async function queueTick() {
+  if (work.task || !work.queue.length || !overlay) return;
+  const item = work.queue[0];
+  const hour = new Date().getHours();
+  let due = item.when === 'next';
+  if (item.when === 'limit') {
+    const u = (Date.now() - (work.usage?.at || 0) > 5 * 60000 ? await refreshUsage(true) : work.usage);
+    const s = u?.rows?.find((r) => r.key === 'session');
+    due = !s || s.pct < 75;
+  }
+  if (item.when === 'night') due = hour >= 1 && hour < 6 && powerMonitor.getSystemIdleTime() > 600;
+  if (!due) return;
+  work.queue.shift();
+  saveQueue();
+  overlay.webContents.send('work:start', { prompt: item.prompt, folder: item.folder || null, queued: true });
+}
+setInterval(() => queueTick().catch(() => {}), 60000);
 let workshopWin = null;
 
 function workState() {
-  return { task: work.task, asks: [...work.asks.values()], history: work.history, usage: work.usage, lang: config.load().language, theme: config.load().theme };
+  return { task: work.task, asks: [...work.asks.values()], history: work.history, usage: work.usage, queue: work.queue, lang: config.load().language, theme: config.load().theme };
 }
 function workSend() {
   workshopWin?.webContents.send('work:state', workState());
@@ -504,6 +656,7 @@ function workEnd(r) {
   work.asks.clear();
   workSend();
   setTimeout(() => refreshUsage(true), 3000);
+  setTimeout(() => queueTick().catch(() => {}), 8000); // the next one waiting, if it can go
 }
 
 // ---- Files you hand her: Send to › Capri, or dropped on her chat (renderer inbox.js) ----
@@ -682,6 +835,8 @@ function rebuildTray() {
       submenu: cfg.achievements.map((a) => ({ label: `★ ${a.name}`, enabled: false })),
     }] : []),
     { label: t.workshop, click: () => openWorkshop() },
+    { label: t.corner, click: () => openCorner() },
+    { label: t.tabsExt, click: () => installExtension() },
     {
       label: t.programs,
       submenu: [
@@ -693,6 +848,7 @@ function rebuildTray() {
         })(),
         { type: 'separator' },
         { label: t.openShop, click: () => { fs.mkdirSync(tasks.PROGRAMS, { recursive: true }); shell.openPath(tasks.SHOP); } },
+        { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
         { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
       ],
     },
@@ -1441,10 +1597,46 @@ function registerIpc() {
   });
   // a task typed in the workshop: through her (she narrates it and asks you, like any other)
   ipcMain.on('work:start', (_e, { prompt, folder } = {}) => {
-    if (typeof prompt !== 'string' || !prompt.trim() || work.task) return;
+    if (typeof prompt !== 'string' || !prompt.trim()) return;
+    if (work.task) { // one at a time: this one waits its turn
+      work.queue = [...work.queue, { id: randomUUID(), prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null, when: 'next', at: Date.now() }].slice(-20);
+      saveQueue();
+      return;
+    }
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  ipcMain.handle('tabs:do', (_e, req) => tabsDo(req && typeof req === 'object' ? req : {}).catch((err) => ({ ok: false, error: err.message })));
+  ipcMain.handle('corner:data', () => cornerData());
+  ipcMain.on('corner:reveal', (_e, name) => {
+    if (typeof name === 'string' && /^[\w-]+\.png$/i.test(name)) shell.showItemInFolder(path.join(ART_DIR, name));
+  });
+  ipcMain.on('corner:open', () => openCorner());
+  // a task for later (hands.js, or the workshop while one runs)
+  ipcMain.handle('work:queue', (_e, { prompt, folder, when } = {}) => {
+    if (typeof prompt !== 'string' || !prompt.trim()) return null;
+    const item = { id: randomUUID(), prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null,
+      when: ['limit', 'night', 'next'].includes(when) ? when : 'next', at: Date.now() };
+    work.queue = [...work.queue, item].slice(-20);
+    saveQueue();
+    return item;
+  });
+  ipcMain.on('work:unqueue', (_e, id) => {
+    work.queue = work.queue.filter((q) => q.id !== id);
+    saveQueue();
+  });
+  // "when I open X, remind me of Y": kept here, checked on the window in front while there are any
+  ipcMain.handle('ctx:add', (_e, { app: name, text } = {}) => {
+    const r = { id: randomUUID(), app: String(name || '').slice(0, 60), text: String(text || '').slice(0, 200), made: Date.now() };
+    if (!r.app || !r.text) return null;
+    config.save({ ctxReminders: [...(config.load().ctxReminders || []), r].slice(-20) });
+    ctxWatch();
+    return r;
+  });
+  // your windows arranged as you asked (arrange.js)
+  ipcMain.handle('win:arrange', (_e, req = {}) => require('./arrange').arrange({
+    action: String(req.action || ''), names: (Array.isArray(req.names) ? req.names : []).map((n) => String(n).slice(0, 60)).slice(0, 2),
+  }).catch((err) => ({ ok: false, error: err.message })));
   // a notification of hers (on the lock screen too, if Windows shows notifications there)
   ipcMain.on('lock:notify', (_e, { title, body } = {}) => {
     if (!Notification.isSupported()) return;
@@ -1850,6 +2042,9 @@ function main() {
     wakeSync();
     // her local model, ready for her: Ollama started if it's asleep (it may not start with Windows)
     setTimeout(() => wakeOllama().then(() => refreshModels()).catch(() => {}), 4000);
+    ctxWatch(); // reminders tied to an app, from before
+    setTimeout(() => githubTick().catch(() => {}), 60000);
+    setInterval(() => githubTick().catch(() => {}), 10 * 60000);
     // how much of your Claude plan is used (free to ask): now and then
     setTimeout(() => refreshUsage(true), 20000);
     setInterval(() => refreshUsage(true), 10 * 60000);
@@ -1862,6 +2057,7 @@ function main() {
     require('./guard').watchDownloads((file) => overlay?.webContents.send('guard:download', file));
     createBridge({
       port: PORT,
+      onTabs: (ws) => tabs.attach(ws),
       // her own Claude Code chat's hooks would cover its answer with theirs
       onEvent: (evt) => {
         // your terminal (hooks/capri-shell.sh), not an AI: her menu › React to my terminal

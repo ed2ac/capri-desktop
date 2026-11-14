@@ -15,7 +15,8 @@ const T = {
     write: 'Criar {f}', edit: 'Editar {f}', bash: 'Rodar um comando', web: 'Abrir {f}', other: 'Usar {f}',
     steps_n: '{n} passos', busy: 'O Claude já está trabalhando.', model: 'modelo: {m}', secs: '{m} min', running: 'trabalhando…',
     shownText: 'Claude disse', changes: 'ver mudança', taskTag: 'TAREFA', stepsTag: 'PASSOS', newTag: 'NOVA.TAREFA', historyTag: 'HISTÓRICO',
-    working: 'TRABALHANDO', waiting: 'PERMISSÃO', okMark: 'OK', badMark: 'FALHOU', modes: { auto: 'permissões: auto', acceptEdits: 'permissões: edita sozinho', default: 'permissões: pergunta tudo' },
+    working: 'TRABALHANDO', waiting: 'PERMISSÃO', okMark: 'OK', badMark: 'FALHOU', queueTag: 'FILA', goQueue: 'Pôr na fila', remove: 'Tirar',
+    whenNames: { limit: 'quando o limite renovar', night: 'de madrugada', next: 'depois da atual' }, modes: { auto: 'permissões: auto', acceptEdits: 'permissões: edita sozinho', default: 'permissões: pergunta tudo' },
     verbs: { Write: 'CRIA', Edit: 'EDITA', MultiEdit: 'EDITA', NotebookEdit: 'EDITA', Bash: 'RODA', Read: 'LÊ', Glob: 'PROCURA', Grep: 'PROCURA', LS: 'OLHA', WebFetch: 'NAVEGA', WebSearch: 'PESQUISA', TodoWrite: 'PLANEJA', Task: 'DELEGA', Agent: 'DELEGA' },
   },
   en: {
@@ -28,7 +29,8 @@ const T = {
     write: 'Create {f}', edit: 'Edit {f}', bash: 'Run a command', web: 'Open {f}', other: 'Use {f}',
     steps_n: '{n} steps', busy: 'Claude is already working.', model: 'model: {m}', secs: '{m} min', running: 'working…',
     shownText: 'Claude said', changes: 'see change', taskTag: 'TASK', stepsTag: 'STEPS', newTag: 'NEW.TASK', historyTag: 'HISTORY',
-    working: 'WORKING', waiting: 'PERMISSION', okMark: 'OK', badMark: 'FAILED', modes: { auto: 'permissions: auto', acceptEdits: 'permissions: edits alone', default: 'permissions: ask all' },
+    working: 'WORKING', waiting: 'PERMISSION', okMark: 'OK', badMark: 'FAILED', queueTag: 'QUEUE', goQueue: 'Queue it', remove: 'Remove',
+    whenNames: { limit: 'when the limit resets', night: 'overnight', next: 'after the current one' }, modes: { auto: 'permissions: auto', acceptEdits: 'permissions: edits alone', default: 'permissions: ask all' },
     verbs: { Write: 'WRITE', Edit: 'EDIT', MultiEdit: 'EDIT', NotebookEdit: 'EDIT', Bash: 'RUN', Read: 'READ', Glob: 'FIND', Grep: 'FIND', LS: 'LOOK', WebFetch: 'BROWSE', WebSearch: 'SEARCH', TodoWrite: 'PLAN', Task: 'DELEGATE', Agent: 'DELEGATE' },
   },
 };
@@ -166,7 +168,7 @@ function task(tk) {
   $('idle').hidden = Boolean(tk);
   $('task').hidden = !tk;
   $('live').classList.toggle('on', Boolean(tk));
-  $('go').disabled = Boolean(tk);
+  $('go').textContent = tk ? t.goQueue : t.go;
   const log = $('log');
   if (!tk) {
     if (shownSteps !== -1 || !log.children.length) { log.replaceChildren(el('li', 'muted', t.noSteps)); shownSteps = -1; }
@@ -215,6 +217,22 @@ function history(list) {
   return undefined;
 }
 
+function queue(list) {
+  $('queue-card').hidden = !list.length;
+  const box = $('queue');
+  box.replaceChildren();
+  for (const q of list) {
+    const li = el('li');
+    const top = el('div', 'h-top');
+    const rm = el('button', 'btn small', t.remove);
+    rm.onclick = () => window.work.unqueue(q.id);
+    top.append(el('span', 'mark ok', '⏳'), el('span', 'h-prompt', q.prompt), rm);
+    top.title = q.prompt;
+    li.append(top, el('div', 'h-meta', `${t.whenNames[q.when] || q.when}${q.folder ? ` · ${base(q.folder)}` : ''}`));
+    box.append(li);
+  }
+}
+
 function render(s) {
   state = s;
   language(s.lang);
@@ -224,6 +242,7 @@ function render(s) {
   asks(s.asks || []);
   task(s.task);
   history(s.history || []);
+  queue(s.queue || []);
   tick();
 }
 
@@ -238,7 +257,7 @@ $('pick').onclick = async () => {
 $('new').onsubmit = (e) => {
   e.preventDefault();
   const prompt = $('ask').value.trim();
-  if (!prompt || state?.task) return;
+  if (!prompt) return;
   window.work.start(prompt, folder);
   $('ask').value = '';
 };

@@ -285,3 +285,5 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 ::-webkit-scrollbar-thumb { background: var(--ink-2); box-shadow: inset 0 0 0 1px var(--frame); }
 ::-webkit-scrollbar-thumb:hover { background: var(--frame); }
 ::-webkit-scrollbar-corner { background: var(--ink-3); }
+
+.btn.small { padding: 4px 10px 3px 12px; font-size: 10px; }

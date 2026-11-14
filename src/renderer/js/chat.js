@@ -5,11 +5,12 @@
 // or the model asks for it with a tag in its answer. Music right away; an app you named yourself
 // right away; anything only the model asked for, a website, and closing an app behind a button.
 
-import { pick, fmt, inLang } from './util.js';
+import { pick, fmt, inLang, scrub, slang } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
 import { folderIn } from './hands.js';
 import { portraitStrokes } from './art.js';
+import { GAME_ASK as WORD_GAMES } from './games.js';
 
 const REMEMBER = 20; // messages she has in mind when answering
 const KEEP = 60;     // messages she remembers across restarts (memory.json)
@@ -33,6 +34,39 @@ const CLIP_ASK = /(?:o que (?:eu )?copiei|(?:texto|conte[úu]do) (?:que )?(?:eu 
 const TASK_TAG = /\[\[\s*task\s*:\s*([^\]]*)\]\]/i;
 const TASK_ASK = /^\s*(?:capri,?\s+)?(?:tarefa|task|t[âa]che|tarea|задача|claude)\s*[:,]\s*(.{4,})$/is;
 // work to do in a folder you named ("abra a pasta site no windows e faça esse código"): her hands
+// reading what's on your screen: an error, a message, a print (her look at it, with your question)
+const LOOK_READ = /(?<![\p{L}])(?:l[êe]|leia|ler|lê pra mim)\s+(?:o que\s+(?:t[áa]|est[áa])\s+(?:escrito\s+)?)?(?:na|a|minha|essa)\s+tela|(?<![\p{L}])(?:l[êe]|leia|ler)\s+(?:esse|este|o|isso|aquele)\s+(?:erro|print|texto|c[óo]digo|aviso|e-?mail|mensagem)|o que\s+(?:diz|significa|quer dizer)\s+(?:esse|este|o|aquele)\s+(?:erro|aviso|texto|c[óo]digo|print)|explica\s+(?:esse|este|o)\s+(?:erro|aviso|c[óo]digo)|what does (?:this|that|the) (?:error|message|warning) (?:say|mean)|read (?:my|the|this) screen|read (?:this|that) (?:error|text|message)/iu;
+
+// "quando eu abrir o VS Code, me lembra de…": a reminder for when that app comes up (main.js)
+const CTX_ASK = /(?:quando|assim que|na hora que)\s+(?:eu\s+)?(?:abrir|entrar\s+n[oa]|for\s+pr[oa]|usar|voltar\s+pr[oa])\s+(?:o\s+|a\s+)?(.+?),?\s+(?:me\s+)?(?:lembr[ae]|avis[ae])\w*\s+(?:de\s+|que\s+|pra\s+|para\s+)?(.+)|when\s+i\s+(?:open|get\s+to|go\s+to|use)\s+(?:the\s+)?(.+?),?\s+remind\s+me\s+(?:to\s+|about\s+|that\s+)?(.+)/i;
+
+// "o que eu fiz essa semana?": her summary of your week, from her diary of your days (activity.js)
+const WEEK_ASK = /o\s+que\s+(?:eu\s+)?fiz\s+(?:essa|nesta|esta|na|n[ae]ssa)\s+semana|resum[oe]\s+(?:da\s+)?(?:minha\s+)?semana|como\s+foi\s+(?:a\s+)?minha\s+semana|what\s+did\s+i\s+do\s+this\s+week|(?:sum\s+up|recap)\s+my\s+week|how\s+was\s+my\s+week/i;
+
+// your browser's tabs, through her extension (main tabs.js)
+const TABS = [
+  ['count', /quantas\s+abas|how\s+many\s+tabs/i],
+  ['close', /fech[ae]\w*\s+(?:todas\s+)?(?:as\s+)?abas?\s+(?:d[oae]s?\s+|com\s+)(.+)|close\s+(?:all\s+)?(?:the\s+|my\s+)?(.+?)\s+tabs?/i],
+  ['save', /(?:guard|salv)[ae]\w*\s+(?:essas|estas|as|minhas)\s+abas|save\s+(?:these|my|the)\s+tabs/i],
+  ['restore', /(?:abr|reabr|volt|traz|tra[gz]|devolv)\w*\s+(?:as\s+|minhas\s+)?abas\s+(?:que\s+(?:eu\s+|você\s+)?(?:guardei|guardou|salvei)|guardadas|salvas)|(?:restore|reopen)\s+(?:my\s+)?(?:saved\s+)?tabs/i],
+  ['go', /(?:vai|vá|muda|mude|troca|troque|ir)\s+(?:pra|para)\s+(?:a\s+)?aba\s+(?:d[oae]\s+)?(.+)|(?:go|switch)\s+to\s+(?:the\s+)?(.+?)\s+tab/i],
+  ['page', /resum[ea]\w*\s+(?:essa|esta|a|aquela)\s+(?:p[áa]gina|aba|mat[ée]ria|not[íi]cia|artigo|reportagem)|(?:summari[sz]e|tl;?dr)\s+(?:this|the)\s+(?:page|article|tab)|^tl;?dr\b/i],
+];
+
+// "vou dormir", "boa noite, capri": she says goodnight and goes to sleep too (presence.js)
+const NIGHT_ASK = /^(?:capri,?\s+)?(?:vou\s+dormir|t[ôo]\s+indo\s+dormir|indo\s+dormir|boa\s+noite(?:,?\s+capri)?|fui\s+dormir|hora\s+de\s+dormir|good\s*night|going\s+to\s+(?:bed|sleep))[\s!.,]*(?:capri)?[\s!.]*$/i;
+
+// her corner: "mostra seus desenhos", "abre seu diário"
+const CORNER_ASK = /(?:mostr|abr|v[êe]r|quero\s+ver)\w*\s+(?:os\s+)?(?:seus|teus)\s+(?:desenhos|di[áa]rio|conquistas)|(?:show|open)\s+(?:me\s+)?your\s+(?:drawings|diary|achievements)/i;
+
+// your windows: side by side, all minimized but one, back again, maximized (main arrange.js)
+const SIDE_ASK = /lado\s+a\s+lado|side\s+by\s+side|divid[ae]\s+a\s+tela|split\s+(?:the\s+)?screen/i;
+const FOCUS_ASK = /minimiz[ae]\w*\s+(?:tudo|todas(?:\s+as\s+janelas)?|as\s+outras|everything|all)(?:\s+(?:menos|exceto|fora|tirando|but|except)\s+(.+))?/i;
+const RESTORE_ASK = /(?:mostr[ae]|volt[ae]|traz|traga|restaur[ae]|desminimiz[ae]|reabr[ae])\w*\s+(?:tudo|as\s+janelas|todas)(?:\s+de\s+(?:volta|novo))?|bring\s+(?:them|everything)\s+back|restore\s+(?:the\s+)?windows/i;
+const MAX_ASK = /maximiz[ae]\w*(?:\s+(.+))?|maximi[sz]e(?:\s+(.+))?/i;
+const appNames = (s) => String(s || '').replace(/[.!?]+$/, '').replace(/^(?:capri,?\s+)?(?:coloca|coloque|põe|ponha|bota|bote|deixa|deixe|organiza|organize|arruma|arrume|put|place|set)\s+/i, '')
+  .split(/\s+(?:e|and|com|with)\s+/i).map((x) => x.replace(/^(?:o|a|os|as|the)\s+/i, '').replace(/\s+(?:aberto|aberta|na tela)$/i, '').trim()).filter((x) => x && x.length < 40);
+
 // "jokenpô", "pedra papel tesoura": a game with your hand in front of the camera (gestures.js)
 const RPS_ASK = /jokenp[ôo]|pedra,?\s+papel,?\s+(?:e\s+)?tesoura|rock,?\s+paper,?\s+(?:and\s+)?scissors|piedra,?\s+papel|pierre,?\s+feuille/i;
 // "me desenha", "faz um retrato meu": her drawing of your face (art.js)
@@ -322,6 +356,7 @@ export class Chat {
       return;
     }
     this.history = await host.chatMemory().catch(() => this.history); // "forget" in her menu may have emptied it
+    this.history = (this.history || []).map((m) => (m.role === 'assistant' ? { ...m, content: scrub(m.content) } : m));
     this.cold = status.warmup && !this.warm;
     this.agent = Boolean(status.agent); // Claude Code answers, as her, and really works in your project
     this.listApps();
@@ -393,7 +428,13 @@ export class Chat {
     }
     this.panel.setChatBusy(true);
     this.panel.setActions([]); // a close button she offered before goes with a new message
+    // a game on in her chat (games.js): your move, unless it isn't one (then the game ends)
     this.panel.chatTurn({ quote: text, face: 'aside' });
+    if (this.games?.on) {
+      const line = await this.games.turn(text).catch(() => null);
+      if (line) return this.sendLine(line, id, 'smug');
+      // not a move: the game's over, and this is a message like any other
+    }
     this.capri.pulse();
     this.onMessage?.(text);
     // what you asked for plainly happens right away (the music, the volume, an app you named): her
@@ -401,6 +442,10 @@ export class Chat {
     const asked = this.agent ? null : this.asked(text);
     if (asked?.kind === 'look') return this.sendLook(text, id);
     if (asked?.kind === 'care') return this.sendCare(asked, id);
+    if (asked?.kind === 'game') {
+      const line = await this.games.start(asked.game).catch(() => null);
+      return this.sendLine(line || this.brain.t.games.quizFailed, id, 'smug');
+    }
     if (asked?.kind === 'task' && this.hands) {
       // "task: …": straight to her hands, with a button first
       this.turn = 0;
@@ -506,6 +551,16 @@ export class Chat {
     this.listApps(); // fresh for the next message
   }
 
+  // a line of hers as the answer, no AI (her games)
+  sendLine(line, id, face = 'look') {
+    if (this.turn !== id) return;
+    this.turn = 0;
+    this.remember({ role: 'assistant', content: line });
+    this.panel.stream(line, { done: true });
+    this.panel.setFace(face);
+    this.panel.setChatBusy(false);
+  }
+
   // Taking care of your PC (care.js): done without her AI (quicker, and it works with the internet
   // down), her line about it as her answer, with its buttons.
   async sendCare(asked, id) {
@@ -576,7 +631,7 @@ export class Chat {
       id: snap.id,
       persona: this.lookPersona(),
       history: this.history.slice(-REMEMBER, -1),
-      prompt: `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you. Answer about what you really see, in character. ${this.languageNote()})`,
+      prompt: `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you. Answer about what you really see, in character. If they ask you to read something (an error, a message, code), quote what it actually says and explain it simply, in a few sentences. ${this.languageNote()})`,
     });
     if (!res.ok) {
       const model = String(res.model || '…').replace(/:latest$/, '');
@@ -607,6 +662,21 @@ export class Chat {
     if (this.hands && WORK_ASK.test(text) && folderIn(text)) return { kind: 'task', text: text.trim() };
     if (this.hands && USAGE_ASK.test(text)) return { kind: 'usage' };
     if (this.gestures && RPS_ASK.test(text)) return { kind: 'rps' };
+    if (this.activity && WEEK_ASK.test(text)) return { kind: 'week' };
+    if (CORNER_ASK.test(text)) return { kind: 'corner' };
+    if (this.presence && NIGHT_ASK.test(text.trim())) return { kind: 'night' };
+    for (const [action, re] of TABS) {
+      const m = re.exec(text);
+      if (m) return { kind: 'tabs', action, query: (m[1] || m[2] || '').replace(/[.!?]+$/, '').replace(/^(?:o|a|os|as|the)\s+/i, '').trim() };
+    }
+    const ctx = CTX_ASK.exec(text);
+    if (ctx) return { kind: 'ctxRemind', app: (ctx[1] || ctx[3]).trim(), text: (ctx[2] || ctx[4]).replace(/[.!]+$/, '').trim() };
+    if (SIDE_ASK.test(text)) return { kind: 'arrange', action: 'side', names: appNames(text.split(SIDE_ASK)[0]) };
+    const focus = FOCUS_ASK.exec(text);
+    if (focus) return { kind: 'arrange', action: 'focus', names: appNames(focus[1]) };
+    if (RESTORE_ASK.test(text)) return { kind: 'arrange', action: 'restore', names: [] };
+    const max = MAX_ASK.exec(text);
+    if (max && count <= 8) return { kind: 'arrange', action: 'maximize', names: appNames(max[1] || max[2]) };
     if (this.art && PORTRAIT_ASK.test(text)) return { kind: 'portrait' };
     if (this.reminders) {
       const remind = parseReminder(text);
@@ -618,9 +688,11 @@ export class Chat {
     }
     const name = NAME_ASK.exec(text)?.[1];
     if (name) return { kind: 'name', name };
+    const game = this.games && WORD_GAMES.find(([, re]) => re.test(text))?.[0];
+    if (game) return { kind: 'game', game };
     const memo = MEMO_ASK.exec(text)?.[1]?.trim();
     if (memo) return { kind: 'memo', text: memo };
-    if (this.look && LOOK_ASK.test(text)) return { kind: 'look' };
+    if (this.look && (LOOK_ASK.test(text) || LOOK_READ.test(text))) return { kind: 'look' };
     const pc = this.askedPc(text, count);
     if (pc) return pc;
     if (SHOT_ASK.test(text)) return { kind: 'shot' };
@@ -817,6 +889,28 @@ export class Chat {
   async doNow(asked) {
     if (asked.kind === 'usage') return { line: await this.hands.usageLine(), face: 'look' };
     if (asked.kind === 'rps' || asked.kind === 'portrait') return this.bodyGame(asked.kind);
+    if (asked.kind === 'arrange') return this.arrange(asked);
+    if (asked.kind === 'week') return this.week();
+    if (asked.kind === 'tabs') return this.tabs(asked);
+    if (asked.kind === 'night') {
+      // a little while to read her goodnight, then the chat closes and she sleeps (camera resting)
+      setTimeout(() => {
+        if (!this.open) return;
+        this.panel.hide();
+        this.close();
+        setTimeout(() => this.presence.goodnight(), 800);
+      }, 6000);
+      const queued = (await this.host.workState?.().catch(() => null))?.queue?.length;
+      return { line: fmt(pick(this.brain.t.presence.night), {}) + (queued ? ` ${fmt(this.brain.t.presence.nightQueue, { count: queued })}` : ` ${this.brain.t.presence.nightTip}`), face: 'look' };
+    }
+    if (asked.kind === 'corner') {
+      this.host.openCorner?.();
+      return { line: this.brain.t.week.corner, face: 'laugh' };
+    }
+    if (asked.kind === 'ctxRemind') {
+      const r = await this.host.ctxAdd?.({ app: asked.app, text: asked.text }).catch(() => null);
+      return r ? { line: fmt(this.brain.t.arrange.ctxSet, { app: asked.app, text: asked.text }), face: 'smug' } : null;
+    }
     if (asked.kind === 'pc') return this.pcNow(asked);
     const { t } = this;
     const custom = this.brain.custom;
@@ -946,6 +1040,12 @@ export class Chat {
       return undefined;
     }
     if (done?.offer) return this.launch(done.offer, answer); // it would run something: your click first
+    if (done?.buttons?.length && done.onButton) {
+      // something to confirm first (closing tabs…): her line and its buttons
+      this.addLine(answer, done.line, done.face);
+      this.offer(done, `${answer}\n${done.line}`);
+      return undefined;
+    }
     if (done?.confirm) {
       // your PC's power: her two buttons
       this.addLine(answer, done.line, done.face);
@@ -991,6 +1091,74 @@ export class Chat {
     if (item) return this.launch(item, answer);
     const site = namedSite(value); // "[[open: YouTube]]": a site, not an app
     return site ? this.offerSite(site.url, answer, text) : this.addLine(answer, fmt(t.notInstalled, { app: value }));
+  }
+
+  // your last seven days, in her words: what you spent time on, from her notes (local AI only)
+  async week() {
+    const w = this.brain.t.week;
+    const days = this.activity?.days || {};
+    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const dates = Object.keys(days).filter((d) => d >= since).sort();
+    if (!dates.length) return { line: w.none, face: 'aside' };
+    const apps = {};
+    const notes = [];
+    for (const d of dates) {
+      for (const [app, m] of Object.entries(days[d].apps || {})) apps[app] = (apps[app] || 0) + m;
+      notes.push(...(days[d].notes || []).slice(0, 4).map((n) => `${d}: ${n}`));
+    }
+    const top = Object.entries(apps).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([a, m]) => `- ${a}: ${Math.round(m / 60 * 10) / 10} h`);
+    const diary = Object.entries(this.activity?.diary || {}).filter(([d]) => d >= since).map(([d, t]) => `${d}: ${t}`);
+    const prompt = [
+      `Sum up the user's last week for them (${dates.length} days you saw), like a friend who was there: what took most of their time, what stood out, one tease and one bit of praise. Three to five sentences, plain text.`,
+      'Where their time went:', ...top, ...(notes.length ? ['Moments:', ...notes.slice(-14)] : []), ...(diary.length ? ['Your diary:', ...diary] : []),
+      this.languageNote(),
+    ].join('\n');
+    const res = await this.host.localSay({ persona: this.lookPersona(), prompt, maxTokens: 260, temperature: 0.8 }).catch(() => null);
+    if (!res?.ok || !inLang(res.text, this.brain.lang)) return { line: w.failed, face: 'aside' };
+    return { line: clean(res.text), face: 'smug' };
+  }
+
+  // your tabs (her browser extension)
+  async tabs({ action, query }) {
+    const b = this.brain.t.tabs;
+    const r = await this.host.tabsDo?.({ action: action === 'close' ? 'find' : action, query }).catch(() => null);
+    if (!r?.ok) return { line: r?.error === 'offline' ? b.offline : r?.error === 'notfound' ? fmt(b.notFound, { q: query }) : r?.error === 'none' ? b.none : b.failed, face: 'aside' };
+    if (action === 'count') return { line: fmt(r.count === 1 ? b.countOne : b.count, { count: r.count, top: r.top.map(([h, n]) => `${n} ${h}`).join(', ') || '…' }), face: r.count > 25 ? 'wide' : 'smug' };
+    if (action === 'go') return { line: fmt(b.went, { title: r.title.slice(0, 60) }), face: 'smug' };
+    if (action === 'save') return { line: fmt(b.saved, { count: r.count }), face: 'smug' };
+    if (action === 'restore') return { line: fmt(b.restored, { count: r.count }), face: 'laugh' };
+    if (action === 'close') {
+      if (!r.tabs.length) return { line: fmt(b.notFound, { q: query }), face: 'aside' };
+      return {
+        line: fmt(b.closeAsk, { count: r.tabs.length, q: query }), face: 'look',
+        buttons: [{ id: 'close', label: fmt(b.closeIt, { count: r.tabs.length }), primary: true }, { id: 'no', label: this.t.no }],
+        onButton: async (id) => {
+          if (id !== 'close') return null;
+          const done = await this.host.tabsDo({ action: 'close', ids: r.tabs.map((x) => x.id) }).catch(() => null);
+          return done?.ok ? { line: fmt(b.closed, { count: done.closed }), face: 'smug' } : { line: b.failed, face: 'aside' };
+        },
+      };
+    }
+    if (action === 'page') {
+      if (!r.text || r.text.length < 200) return { line: b.noText, face: 'aside' };
+      // the page's text goes to her local AI only, never out of your PC
+      const res = await this.host.localSay({ persona: this.lookPersona(), maxTokens: 300, temperature: 0.5,
+        prompt: `Sum up this page for the user in three to five short sentences, in your voice: what it's about and what matters in it. Page title: "${r.title}".\n<<<\n${r.text.slice(0, 9000)}\n>>>\n${this.languageNote()}` }).catch(() => null);
+      return res?.ok ? { line: clean(res.text), face: 'smug' } : { line: b.failed, face: 'aside' };
+    }
+    return null;
+  }
+
+  // your windows, arranged
+  async arrange({ action, names }) {
+    const a = this.brain.t.arrange;
+    const r = await this.host.winArrange?.({ action, names }).catch(() => null);
+    if (!r?.ok) return { line: r?.error === 'notfound' ? fmt(a.notFound, { app: (r.missing || names).join(', ') }) : a.none, face: 'aside' };
+    this.zap();
+    const line = action === 'side' ? fmt(a.side, { a: r.names[0], b: r.names[1] })
+      : action === 'focus' ? fmt(a.focus, { app: r.names[0], count: r.count })
+        : action === 'restore' ? fmt(a.restore, { count: r.count }) : fmt(a.max, { app: r.names[0] });
+    return { line, face: 'smug' };
   }
 
   // her games with the camera: the chat closes and she plays on screen
@@ -1321,7 +1489,7 @@ export class Chat {
 
 // The model's answer as she'd say it: no reasoning block, no markdown marks.
 export function clean(text) {
-  return String(text)
+  return slang(String(text))
     .replace(/<think>[\s\S]*?(<\/think>|$)/g, '')
     .replace(/\[\[[^\]]*(\]\]|$)/g, '') // her tags (read from the raw answer, never shown)
     .replace(/[*_`#]+/g, '')

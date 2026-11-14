@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('work', {
   cancel: () => ipcRenderer.send('work:cancel'),
   reveal: (dir) => ipcRenderer.send('work:reveal', String(dir || '')),
   pick: () => ipcRenderer.invoke('work:pick'),
+  unqueue: (id) => ipcRenderer.send('work:unqueue', String(id)),
   start: (prompt, folder) => ipcRenderer.send('work:start', { prompt: String(prompt || ''), folder: folder ? String(folder) : null }),
 });

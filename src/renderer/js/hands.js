@@ -27,6 +27,14 @@ export function folderIn(text = '') {
   const one = ONE_FOLDER.exec(said)?.[1];
   return one && !NOT_FOLDER.test(one) ? { name: one, side: '' } : null;
 }
+// for later: when the Claude limit has room again, at night, later on
+const LATER = /(?:quando\s+(?:o\s+)?limite\s+(?:do\s+claude\s+)?(?:renovar|voltar|liberar|resetar|zerar)|quando\s+liberar|when\s+(?:the\s+)?limit\s+resets)/iu;
+const NIGHT = /(?:(?:à|a|de)\s+noite|de\s+madrugada|enquanto\s+eu\s+durmo|overnight|tonight|while\s+i\s+sleep)/iu;
+const SOON = /(?:mais\s+tarde|depois\s+(?:que|da|do)\s+(?:essa|esse|outra|tarefa)|later\s+on|after\s+this\s+one)/iu;
+export function laterIn(text = '') {
+  const s = String(text);
+  return LATER.test(s) ? 'limit' : NIGHT.test(s) ? 'night' : SOON.test(s) ? 'next' : null;
+}
 const OPEN_IT = /(?<![\p{L}])(?:abr[aei]\w*|open|ouvre|mostr[ae]\w*|show)(?![\p{L}])/iu;
 
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -101,16 +109,23 @@ export class Hands {
     const full = (this.usage?.rows || []).find((r) => r.key === 'session' && r.pct >= 90);
     if (full) this.chat.addLine(answer, fmt(t.usageFull, { pct: Math.round(full.pct), which: t.usageSession, when: this.resetsWhen(full) }), 'wide');
     this.chat.addLine(answer, folder ? fmt(t.offerFolder || t.offerProject, { project: project.name, folder: project.name }) : project ? fmt(t.offerProject, { project: project.name }) : t.offer, 'look');
-    const buttons = again
+    // for later: said so, or the plan's window almost used up
+    const when = laterIn(text) || laterIn(prompt) || (full ? 'limit' : null);
+    let buttons = again
       ? [{ id: 'resume', label: t.resume, primary: true }, { id: 'go', label: t.fresh }, { id: 'no', label: t.no }]
       : [{ id: 'go', label: t.start, primary: true }, { id: 'no', label: t.no }];
+    if (when) buttons = [{ id: 'queue', label: t.queueAs?.[when] || t.start, primary: true }, ...buttons.map((b) => ({ ...b, primary: false }))];
     const pick = (id) => {
       this.pending = null;
       this.chat.panel.setActions([]);
+      if (id === 'queue') {
+        this.host.taskQueue?.({ prompt, folder: folder || dir, when }).then((q) => q && this.chat.addLine(answer, t.queued?.[when] || '👍', 'smug')).catch(() => {});
+        return;
+      }
       if (id === 'go' || id === 'resume') this.start(prompt, answer, { project: folder ? null : dir, folder, resume: id === 'resume' ? this.last.session : null });
     };
     // the buttons, or said back in her chat or out loud ("pode", "continua", "não")
-    this.pending = { pick, again, until: Date.now() + 5 * 60000 };
+    this.pending = { pick, again, when, until: Date.now() + 5 * 60000 };
     this.chat.panel.setActions(buttons, pick);
   }
 
@@ -126,7 +141,9 @@ export class Hands {
     const resume = /(continu|segue|de onde parou|carry on|continue|keep going|resume)/iu;
     const yes = /^(sim|pode|vai|manda|bora|faz|faça|ok|okay|beleza|claro|isso|certo|come[çc]a|vamos|yes|yeah|yep|sure|go|do it|start)(?![\p{L}])/iu;
     let id = null;
+    const later = /(?:depois|mais tarde|agenda|quando (?:o )?limite|à noite|de noite|later|tonight)/iu;
     if (no.test(said)) id = 'no';
+    else if (p.when && later.test(said)) id = 'queue';
     else if (p.again && resume.test(said)) id = 'resume';
     else if (fresh.test(said) || yes.test(said) || resume.test(said)) id = 'go';
     if (!id) { this.pending = null; return null; }

@@ -72,3 +72,56 @@ test('her offer answered in words ("pode", "continua", "não"), typed or spoken'
   assert.equal(h.spoken('pode'), null); // nothing pending any more
   assert.deepEqual(picked, ['go', 'go', 'no', 'resume', 'go']);
 });
+
+test('your windows, arranged in words', () => {
+  const a = (t) => { const r = ask(t); return r && `${r.kind}:${r.action}:${(r.names || []).join('+')}`; };
+  assert.equal(a('coloca o vs code e o chrome lado a lado'), 'arrange:side:vs code+chrome');
+  assert.equal(a('lado a lado'), 'arrange:side:');
+  assert.equal(a('minimiza tudo menos o VS Code'), 'arrange:focus:VS Code');
+  assert.equal(a('minimiza tudo'), 'arrange:focus:');
+  assert.equal(a('mostra tudo de novo'), 'arrange:restore:');
+  assert.equal(a('maximiza o spotify'), 'arrange:maximize:spotify');
+});
+
+test('a window by the name you call it', async () => {
+  const { createRequire } = await import('node:module');
+  const { pick } = createRequire(import.meta.url)('../../src/main/arrange.js');
+  const wins = [{ h: 1, name: 'Code', label: 'Visual Studio Code', title: 'capri' }, { h: 2, name: 'opera', label: 'Opera GX Internet Browser', title: 'YouTube' }, { h: 3, name: 'Spotify', label: 'Spotify', title: 'Spotify Premium' }];
+  assert.equal(pick(wins, 'vs code').h, 1);
+  assert.equal(pick(wins, 'o opera').h, 2);
+  assert.equal(pick(wins, 'youtube').h, 2);
+  assert.equal(pick(wins, 'spotify').h, 3);
+  assert.equal(pick(wins, 'discord'), null);
+});
+
+test('a reminder for when an app comes up', () => {
+  const r = ask('quando eu abrir o VS Code, me lembra de fazer o commit');
+  assert.deepEqual([r.kind, r.app, r.text], ['ctxRemind', 'VS Code', 'fazer o commit']);
+  const e = ask('when I open spotify remind me to make the playlist');
+  assert.deepEqual([e.app, e.text], ['spotify', 'make the playlist']);
+});
+
+test('reading what\'s on the screen', () => {
+  chat.look = {};
+  for (const t of ['lê esse erro pra mim', 'o que diz esse aviso?', 'explica esse erro', 'lê a tela']) assert.equal(ask(t)?.kind, 'look', t);
+  chat.look = null;
+});
+
+test('your tabs, asked in words', () => {
+  const a = (t) => { const r = ask(t); return r && `${r.kind}:${r.action}:${r.query}`; };
+  assert.equal(a('quantas abas eu tenho abertas?'), 'tabs:count:');
+  assert.equal(a('fecha as abas do youtube'), 'tabs:close:youtube');
+  assert.equal(a('fecha todas as abas do Mercado Livre'), 'tabs:close:Mercado Livre');
+  assert.equal(a('guarda essas abas pra depois'), 'tabs:save:');
+  assert.equal(a('abre as abas que eu guardei'), 'tabs:restore:');
+  assert.equal(a('vai pra aba do github'), 'tabs:go:github');
+  assert.equal(a('resume essa página'), 'tabs:page:');
+  assert.equal(a('close the youtube tabs'), 'tabs:close:youtube');
+});
+
+test('goodnight: she sleeps too', () => {
+  chat.presence = {};
+  for (const t of ['vou dormir', 'boa noite, capri!', 'tô indo dormir', 'goodnight']) assert.equal(ask(t)?.kind, 'night', t);
+  assert.notEqual(ask('boa noite pra você também, amanhã a gente termina o projeto')?.kind, 'night');
+  chat.presence = null;
+});

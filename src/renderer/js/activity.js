@@ -7,7 +7,7 @@
 // She also keeps a little of each day (how long on what, what you searched, watched, played) and,
 // the next day, writes her diary of it: her chat remembers your last days. All of it on this PC.
 
-import { fmt, rand, inLang } from './util.js';
+import { fmt, rand, inLang, scrub } from './util.js';
 import { clean, mood } from './chat.js';
 
 const FIRST_AFTER = 90 * 1000;            // turned on: not right away
@@ -98,7 +98,11 @@ export class Activity {
     this.dirty = false;
     host.daysGet().then(({ days = {}, diary = {} } = {}) => {
       this.days = { ...days, ...this.days };
-      this.diary = diary;
+      // what a small model once made up stays out of what she keeps (and rereads)
+      const clean2 = Object.fromEntries(Object.entries(diary).map(([d, t]) => [d, scrub(t)]));
+      const changed = Object.keys(clean2).some((d) => clean2[d] !== diary[d]);
+      this.diary = clean2;
+      if (changed) this.host.daysSave({ diary: clean2 });
       this.remember();
       setTimeout(() => this.writeDiary(), 2 * 60 * 1000);
     }).catch(() => {});

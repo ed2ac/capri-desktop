@@ -89,7 +89,7 @@ export class Life {
   }
 
   step() {
-    if (this.holding()) return; // she stays where your click is going
+    if (this.holding() || this.watching) return; // she stays where your click is going; or she's watching with you (watch.js)
     this.lastMove = performance.now();
     this.capri.lastActivity = performance.now(); // what she does counts as doing something
     this.homeIn = rand(120000, 240000);

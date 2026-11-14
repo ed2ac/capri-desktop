@@ -37,7 +37,7 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onGate, onDebug }) {
+function createBridge({ port, onEvent, onGate, onDebug, onTabs }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
@@ -83,6 +83,20 @@ function createBridge({ port, onEvent, onGate, onDebug }) {
     }
 
     send(res, 404, { ok: false });
+  });
+
+  // her browser extension (extension/): a websocket, and only from an extension. A web page can't
+  // claim a chrome-extension:// origin, so no site you visit can reach your tabs through her.
+  server.on('upgrade', (req, socket) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const origin = String(req.headers.origin || '');
+    if (url.pathname !== '/tabs' || !onTabs || !/^(chrome|moz)-extension:\/\/[a-z0-9-]+\/?$/i.test(origin)) {
+      socket.destroy();
+      return;
+    }
+    const ws = require('./websocket').accept(req, socket);
+    if (ws) onTabs(ws, { origin });
+    else socket.destroy();
   });
 
   server.on('error', (err) => {

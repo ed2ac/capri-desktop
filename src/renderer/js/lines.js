@@ -962,6 +962,8 @@ export const LINES = {
       usageNow: 'Claude’s limit: {session}% of the 5-hour session (resets at {when}) and {week}% of the week.',
       usageNone: 'I couldn’t see Claude’s limit right now (is Claude Code installed in WSL?).',
       offerDropped: 'Okay, never mind then.',
+      queueAs: { limit: 'When the limit resets', night: 'Do it overnight', next: 'Do it after' },
+      queued: { limit: 'Noted: as soon as Claude’s limit resets, I’ll put it on this.', night: 'Deal: overnight, with the PC idle. Ready tomorrow.', next: 'Queued: right after the current task.' },
       offerFolder: 'Found the folder {folder}. Shall I put Claude to work in it? I\'ll ask you before every step.',
       noFolder: 'I couldn\'t find the folder “{folder}”. Tell me its exact path (like C:\\Users\\you\\folder or ~/dev/folder)?',
       resume: 'Carry on with it', fresh: 'Start over', fixIt: 'Ask Claude to look',
@@ -1102,6 +1104,30 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // games in her chat (games.js)
+    games: {
+      hangmanStart: 'Hangman! {n} letters: {board}\nA letter or the whole word. Six mistakes and you’re out.', hangmanHit: 'Yes! {board}', hangmanMiss: 'Nope. {board}  ({left} left)',
+      hangmanAgain: 'You already tried “{letter}”. {board}', hangmanWin: '“{word}”! You got it, choom.', hangmanLose: 'Hanged! It was “{word}”.', hangmanGiveUp: 'Quitter. It was “{word}”.',
+      numberStart: 'I’m thinking of a number from 1 to 100. Go on, guess.', numberHigher: 'Higher than {n}.', numberHigherFar: 'Way higher than {n}.', numberLower: 'Lower than {n}.', numberLowerFar: 'Way lower than {n}.',
+      numberWin: '{n}! In {tries} tries. Not bad.', numberWinSlow: '{n}… finally, {tries} tries.', numberGiveUp: 'It was {n}. Giving up already?',
+      quizRight: 'Right! ({score}/{asked})', quizWrong: 'Wrong! It was {answer}. ({score}/{asked})', quizEnd: 'Done: {score} out of 5.', quizBye: 'Quiz over.', quizFailed: 'My local AI couldn’t write a question now. Another time?',
+    },
+    // your browser's tabs (main tabs.js, extension/)
+    tabs: {
+      offline: 'I can’t see your tabs yet: install my extension (my menu › Browser tabs extension…).', failed: 'Your browser didn’t answer me. Try again?',
+      count: 'You’ve got {count} tabs open. Most of them: {top}.', countOne: 'Just one tab open. Look at you, organized.', notFound: 'No tab with “{q}”.', none: 'Nothing to do there.',
+      closeAsk: 'Found {count} tab(s) with “{q}”. Close them?', closeIt: 'Close {count}', closed: 'Closed {count}. Lighter already.',
+      saved: 'Put {count} tabs away for later. Ask me to bring them back when you want.', restored: 'Brought back {count} tabs, in a window of their own.',
+      went: 'There: “{title}”.', noText: 'I can’t read this page (it has almost no text, or it’s the browser’s own).',
+      guide: 'My extension is in that folder. To load it in your browser (Chrome, Opera, Edge, Brave):', guideSteps: '1. Open the extensions page (chrome://extensions, opera://extensions…)\n2. Turn on Developer mode\n3. Load unpacked → pick {dir}', ok: 'Got it',
+    },
+    // watching together (watch.js), your week (chat.js)
+    watch: { after: ['So? What did you think of it?', 'That was a long one. Worth it?', 'Okay, verdict: good or a waste of time?'] },
+    week: { none: 'I don’t have your week yet: turn on “Comment on what I do” and I’ll keep track.', failed: 'My local AI didn’t answer just now. Ask me again in a bit?', corner: 'My little corner! Don’t laugh at the drawings.' },
+    // your GitHub (main github.js)
+    github: { ciFailed: 'The CI on {repo} broke: “{title}”.', review: 'Someone wants your review on {repo}: “{title}”.', mention: 'You got mentioned on {repo}: “{title}”.', assign: 'Something on {repo} was assigned to you: “{title}”.', security: 'Security alert on {repo}: “{title}”.', fix: 'Put Claude on it', later: 'Not now', ciMany: '{count} runs failed ({repos})' },
+    // your windows (arrange.js)
+    arrange: { side: '{a} and {b}, side by side.', focus: 'Just {app} now. I minimized {count}.', restore: 'Brought {count} window(s) back.', max: '{app}, full screen.', notFound: 'I can’t find {app} open.', none: 'No windows to arrange.', ctxSet: 'Deal: when you open {app}, I’ll remind you to {text}.', ctxFire: 'You opened {app}: don’t forget to {text}!' },
     // your hands and head (gestures.js)
     gesture: {
       wave: ['Hi! Hi! I see you!', 'Hey you! 👋', 'Waving at me? Cute.'], thumbsUp: ['Preem. I know.', 'Thanks, choom.', 'Yeah, I’m great, aren’t I?'],
@@ -1131,6 +1157,7 @@ export const LINES = {
       back: 'Oh, you’re back! While you were gone:', backLong: 'Finally! You were gone a while. Here’s what happened:',
       drew: 'And I drew you something.', claude: 'Claude finished: “{text}”', claudeIn: 'Claude finished on {project}: “{text}”',
       pcIssues: 'I looked over the PC: {count} thing(s) need you (ask me for a checkup).',
+      night: ['Goodnight, choom. Sleep well.', 'Night! I’ll keep an eye on things.', 'Sweet dreams. Don’t dream of me too much.'], nightQueue: 'Claude has {count} task(s) waiting: I’ll get them done while you sleep.', nightTip: 'If you want, leave Claude a task “for overnight” and it’ll be done by morning.',
     },
     // who's at the PC (faceid.js)
     face: {
@@ -2174,6 +2201,8 @@ export const LINES = {
       usageNow: 'Limite do Claude: {session}% da sessão de 5 h (renova às {when}) e {week}% da semana.',
       usageNone: 'Não consegui ver o limite do Claude agora (o Claude Code tá instalado no WSL?).',
       offerDropped: 'Beleza, deixo pra lá.',
+      queueAs: { limit: 'Quando o limite renovar', night: 'Fazer de madrugada', next: 'Fazer depois' },
+      queued: { limit: 'Anotado: assim que o limite do Claude renovar, eu ponho ele nisso.', night: 'Combinado: faço de madrugada, com o PC parado. Amanhã tá pronto.', next: 'Entrou na fila: depois da tarefa atual.' },
       offerFolder: 'Achei a pasta {folder}. Ponho o Claude pra trabalhar nela? Eu te peço permissão a cada passo.',
       noFolder: 'Não achei a pasta “{folder}”. Me diz o caminho certinho (tipo C:\\Users\\você\\pasta ou ~/dev/pasta)?',
       resume: 'Continuar a conversa', fresh: 'Começar do zero', fixIt: 'Pedir pro Claude olhar',
@@ -2314,6 +2343,30 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // jogos no chat dela (games.js)
+    games: {
+      hangmanStart: 'Forca! {n} letras: {board}\nUma letra ou a palavra inteira. Seis erros e já era.', hangmanHit: 'Isso! {board}', hangmanMiss: 'Não tem. {board}  (faltam {left})',
+      hangmanAgain: 'Você já tentou “{letter}”. {board}', hangmanWin: '“{word}”! Acertou, choom.', hangmanLose: 'Enforcado! Era “{word}”.', hangmanGiveUp: 'Desistiu, é? Era “{word}”.',
+      numberStart: 'Pensei num número de 1 a 100. Vai, chuta.', numberHigher: 'Mais alto que {n}.', numberHigherFar: 'Bem mais alto que {n}.', numberLower: 'Mais baixo que {n}.', numberLowerFar: 'Bem mais baixo que {n}.',
+      numberWin: '{n}! Em {tries} tentativas. Nada mal.', numberWinSlow: '{n}… até que enfim, {tries} tentativas.', numberGiveUp: 'Era {n}. Já desistiu?',
+      quizRight: 'Acertou! ({score}/{asked})', quizWrong: 'Errou! Era {answer}. ({score}/{asked})', quizEnd: 'Fim: {score} de 5.', quizBye: 'Fim do quiz.', quizFailed: 'Minha IA local não conseguiu criar uma pergunta agora. Outra hora?',
+    },
+    // as abas do seu navegador (main tabs.js, extension/)
+    tabs: {
+      offline: 'Ainda não vejo suas abas: instala minha extensão (meu menu › Extensão das abas).', failed: 'Seu navegador não me respondeu. Tenta de novo?',
+      count: 'Você tem {count} abas abertas. A maioria: {top}.', countOne: 'Só uma aba aberta. Olha só, que organizado.', notFound: 'Nenhuma aba com “{q}”.', none: 'Não tem nada pra fazer aí.',
+      closeAsk: 'Achei {count} aba(s) com “{q}”. Fecho?', closeIt: 'Fechar {count}', closed: 'Fechei {count}. Já ficou mais leve.',
+      saved: 'Guardei {count} abas pra depois. Quando quiser, me pede que eu trago de volta.', restored: 'Trouxe {count} abas de volta, numa janela só delas.',
+      went: 'Pronto: “{title}”.', noText: 'Não consigo ler essa página (tem quase nada de texto, ou é do próprio navegador).',
+      guide: 'Minha extensão tá nessa pasta. Pra carregar no seu navegador (Chrome, Opera, Edge, Brave):', guideSteps: '1. Abra a página de extensões (chrome://extensions, opera://extensions…)\n2. Ligue o Modo de desenvolvedor\n3. Carregar sem compactação → escolha {dir}', ok: 'Entendi',
+    },
+    // assistindo junto (watch.js), sua semana (chat.js)
+    watch: { after: ['E aí? O que achou?', 'Foi longo, hein. Valeu a pena?', 'Tá, veredito: bom ou perda de tempo?'] },
+    week: { none: 'Ainda não tenho sua semana: liga o “Comentar o que eu faço” que eu vou anotando.', failed: 'Minha IA local não respondeu agora. Me pergunta de novo daqui a pouco?', corner: 'Meu cantinho! Não ri dos desenhos.' },
+    // seu GitHub (main github.js)
+    github: { ciFailed: 'O CI do {repo} quebrou: “{title}”.', review: 'Te pediram revisão no {repo}: “{title}”.', mention: 'Te mencionaram no {repo}: “{title}”.', assign: 'Te atribuíram algo no {repo}: “{title}”.', security: 'Alerta de segurança no {repo}: “{title}”.', fix: 'Mandar o Claude', later: 'Agora não', ciMany: '{count} execuções falharam ({repos})' },
+    // suas janelas (arrange.js)
+    arrange: { side: '{a} e {b}, lado a lado.', focus: 'Só o {app} agora. Minimizei {count}.', restore: 'Trouxe {count} janela(s) de volta.', max: '{app} em tela cheia.', notFound: 'Não achei {app} aberto.', none: 'Não tem janela pra arrumar.', ctxSet: 'Combinado: quando você abrir o {app}, eu te lembro de {text}.', ctxFire: 'Abriu o {app}! Não esquece: {text}.' },
     // suas mãos e sua cabeça (gestures.js)
     gesture: {
       wave: ['Oi! Oi! Tô te vendo!', 'Ei, você! 👋', 'Acenando pra mim? Fofo.'], thumbsUp: ['Preem. Eu sei.', 'Valeu, choom.', 'É, eu sou demais, né?'],
@@ -2343,6 +2396,7 @@ export const LINES = {
       back: 'Ah, voltou! Enquanto você tava fora:', backLong: 'Até que enfim! Você sumiu um tempão. Olha o que rolou:',
       drew: 'E eu fiz um desenho pra você.', claude: 'O Claude terminou: “{text}”', claudeIn: 'O Claude terminou no {project}: “{text}”',
       pcIssues: 'Dei uma olhada no PC: {count} coisa(s) precisam de você (me pede um checkup).',
+      night: ['Boa noite, choom. Dorme bem.', 'Boa noite! Eu fico de olho nas coisas.', 'Bons sonhos. Não sonha muito comigo, hein.'], nightQueue: 'O Claude tem {count} tarefa(s) na fila: eu adianto enquanto você dorme.', nightTip: 'Se quiser, deixa uma tarefa pro Claude “de madrugada” que amanhã tá pronta.',
     },
     // quem tá no PC (faceid.js)
     face: {
@@ -2989,7 +3043,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

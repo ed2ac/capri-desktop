@@ -161,7 +161,7 @@ export class Converse {
     if (!this.ready() || this.chat.open || this.presence?.state !== 'here') return;
     if (now - this.lastStarter < rand(this.gap[0], this.gap[1]) * 60000 || now - this.startedAt < 5 * 60000) return;
     const c = this.capri;
-    if (c.busy || c.mode !== 'idle' || this.panel.visible || this.daily?.focus || this.camera?.paused) return;
+    if (c.busy || c.mode !== 'idle' || this.panel.visible || this.daily?.focus || this.camera?.paused || this.watch?.on) return;
     // not while you're typing away or in a game
     const idle = await this.host.pcIdle().catch(() => 0);
     if (idle < 8 || c.windows?.game) return;

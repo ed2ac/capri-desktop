@@ -104,6 +104,13 @@ export class Presence {
     this.checkPc();
   }
 
+  // you said goodnight: away and asleep right now
+  goodnight() {
+    if (this.state === 'here') this.goAway();
+    this.sleepAt = 0;
+    this.goSleep();
+  }
+
   goSleep() {
     if (this.locked) return; // the PC locked: the camera keeps watching who comes (lockwatch.js)
     this.state = 'asleep';

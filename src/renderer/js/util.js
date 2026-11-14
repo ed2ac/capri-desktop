@@ -81,10 +81,8 @@ const WORDS = {
 // words a small model lets slip into her Portuguese (Spanish, mostly) or makes up: a line with one
 // of these is redone, like a line in English
 const SLIPS = {
-  pt: /(?<![\p{L}])(pelea|peleando|chloe|también|tambien|muy|tengo|quiero|hola|gracias|cariño|pero sí|vale la pena|ahora mismo|estás|qué tal|mientras tanto sí|claro que sí|amigo mío|chica|chico|nuestra|nuestro)(?![\p{L}])/iu,
-  es: /(?<![\p{L}])(você|não|obrigad[oa]|também|muito|chloe)(?![\p{L}])/iu,
-  fr: /(?<![\p{L}])(chloe)(?![\p{L}])/iu,
-  en: /(?<![\p{L}])(chloe)(?![\p{L}])/iu,
+  pt: /(?<![\p{L}])(pelea|peleando|también|tambien|muy|tengo|quiero|hola|gracias|cariño|pero sí|vale la pena|ahora mismo|estás|qué tal|mientras tanto sí|claro que sí|amigo mío|chica|chico|nuestra|nuestro)(?![\p{L}])/iu,
+  es: /(?<![\p{L}])(você|não|obrigad[oa]|também|muito)(?![\p{L}])/iu,
 };
 
 // A line of hers as it should be said: no tone label the model wrote ("(Sleepy)", "[sarcastic]"), no
@@ -92,7 +90,7 @@ const SLIPS = {
 const TONES = 'teasing|proud|sleepy|chaotic|sweet|deadpan|dramatic|smug|sarcastic|playful|warm|curious|happy|sad|angry|excited|bored|tired|flirty|shy|mischievous|serious|soft|whisper(?:ing)?|laughs?|giggles?|sighs?|yawns?|provocante|sonolenta|caótica|doce|irônica|dramática|orgulhosa|brincalhona|fofa|curiosa|animada|cansada|sarcástica';
 const TONE_TAG = new RegExp(`\\s*[([](?:${TONES})(?:\\s*[,/&e]\\s*(?:${TONES}))*[)\\]]\\s*`, 'giu');
 export function tidy(text) {
-  let s = String(text ?? '');
+  let s = slang(text);
   if (!s) return s;
   s = s.replace(TONE_TAG, ' ')
     .replace(/\*[^*\n]{1,40}\*/g, ' ') // *giggles*
@@ -107,6 +105,15 @@ export function tidy(text) {
   const count = (re) => (s.match(re) || []).length;
   if (count(/["“”]/g) % 2) s = s.replace(/^["“”]\s*|\s*["“”]$/g, '').trim();
   return s.replace(/\s+([,.!?…])/g, '$1');
+}
+
+// her slang as a small model mangles it: "choom" (Night City for friend) comes out "chloe"
+export function slang(text) {
+  return String(text ?? '').replace(/(?<![\p{L}])chlo[eé](?![\p{L}])/giu, (m) => (m[0] === 'C' ? 'Choom' : 'choom'));
+}
+// what she kept (her diary, her chat), with that fixed
+export function scrub(text) {
+  return slang(text);
 }
 
 export function inLang(text, lang) {

@@ -1,0 +1,13 @@
+/* her corner: the workshop's plates (../workshop/workshop.css), plus a gallery */
+.tabs { margin-left: auto; display: flex; gap: 10px; }
+.pane { flex: 1; overflow: auto; padding: 24px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 22px; }
+.gallery .card .plate { padding: 10px 10px 16px; cursor: pointer; }
+.gallery img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--ink-3); }
+.gallery .when { margin-top: 6px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--paper-3); text-transform: uppercase; }
+.entries { list-style: none; margin: 0; padding: 0; }
+.entries li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.entries li:last-child { border-bottom: 0; }
+.entries .date { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--data); text-transform: uppercase; }
+.entries .text { margin-top: 4px; font-size: 15px; line-height: 1.45; }
+.empty-note { color: var(--paper-3); font-family: var(--font-mono); font-size: 12px; }

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="nightcity">
+<head>
+  <meta charset="utf-8">
+  <!-- Her corner: her drawings, her diary of your days, her achievements. Nothing from outside. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cantinho da Capri</title>
+  <link rel="stylesheet" href="../workshop/workshop.css">
+  <link rel="stylesheet" href="corner.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="dot on"></span>
+      <div>
+        <p class="label"><span class="who">CAPRI</span><span class="tag">CANTINHO</span></p>
+        <h1 data-t="title">Cantinho da Capri</h1>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="btn primary" data-tab="art" role="tab" data-t="art">Desenhos</button>
+      <button class="btn" data-tab="diary" role="tab" data-t="diary">Diário</button>
+      <button class="btn" data-tab="wins" role="tab" data-t="wins">Conquistas</button>
+    </nav>
+  </header>
+  <main class="pane">
+    <section id="art" class="gallery"></section>
+    <section id="diary" class="card" hidden><div class="frame"><div class="plate"><p class="label"><span class="who">CAPRI</span><span class="tag" data-t="diaryTag">DIÁRIO</span></p><ol class="entries" id="entries"></ol></div></div></section>
+    <section id="wins" class="card" hidden><div class="frame"><div class="plate"><p class="label"><span class="who">CAPRI</span><span class="tag" data-t="winsTag">CONQUISTAS</span></p><ul class="entries" id="achievements"></ul></div></div></section>
+  </main>
+  <script src="corner.js"></script>
+</body>
+</html>

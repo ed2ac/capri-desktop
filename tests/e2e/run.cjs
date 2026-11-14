@@ -84,14 +84,17 @@ async function main() {
   await check('who may use the PC, asked in words', "const c = d.chat.care; const r = c.asked('amanhã minha mãe vai usar o pc', 3); return r ? [r.what, r.op, r.who, r.when].join('|') : (d.face ? 'no intent' : 'no face')", (v) => /^faceAllow\|add\|minha mãe\|amanhã$/.test(v));
   // the modal bug: a question of hers must stay where it is (she doesn't walk off with it) and close on a click
   await check('a question of hers stays put, and closes on a click', `
+    d.panel.hide(); await sleep(3000); // a line left over from the check before would outrank her question
+    const before = { asking: d.mic.asking, rec: Boolean(d.mic.rec), guide: d.guide.running, waiting: Boolean(d.guide.waiting), cur: d.panel.current && { kind: d.panel.current.kind, line: String(d.panel.current.line || '').slice(0, 40), guide: d.panel.current.guide, chat: Boolean(d.panel.current.chat) }, visible: d.panel.visible, chatOpen: d.chat.open };
+    const says = []; const say0 = d.panel.say.bind(d.panel); d.panel.say = (x) => { const r = say0(x); says.push((x.kind) + ':' + r + ':' + String(x.line).slice(0, 30)); return r; };
     d.capri.setMode('idle'); d.capri.busy = false; d.mic.asked = false;
-    d.mic.toggle(); await sleep(1200);
+    d.mic.toggle(); await sleep(1200); d.panel.say = say0;
     const r0 = d.panel.rect(); const pos0 = { ...d.capri.pos };
     for (let i = 0; i < 12; i++) { d.life.pace(); d.capri.wanderStep(); await sleep(500); }
     const r1 = d.panel.rect(); const still = r0 && r1 && Math.abs(r0.left - r1.left) < 10 && Math.abs(r0.top - r1.top) < 10 && Math.abs(d.capri.pos.x - pos0.x) < 2 /* she floats a few px */;
     const b = [...document.querySelectorAll('.panel__action')].find((x) => x.offsetParent && /Agora não|Not now/.test(x.textContent)); b?.click(); await sleep(800);
     d.mic.asked = ${JSON.stringify(Boolean(original.micAsked))};
-    return { shown: Boolean(r0), still, closed: !d.guide.waiting && !d.guide.running };`, (v) => v.shown && v.still && v.closed);
+    return { shown: Boolean(r0), still, closed: !d.guide.waiting && !d.guide.running, ...(r0 ? {} : { before, says }) };`, (v) => v.shown && v.still && v.closed);
   await check('her name heard doesn\'t ask anything', `
     d.capri.setMode('idle'); d.mic.asked = false; let asked = false; const real = d.guide.ask.bind(d.guide); d.guide.ask = (...a) => { asked = true; return Promise.resolve('no'); };
     const realStart = d.mic.start.bind(d.mic); d.mic.start = async () => 'started';
@@ -125,6 +128,29 @@ async function main() {
     results.push({ name: 'her coding workshop opens and shows the limit', pass, v });
     console.log(`${pass ? 'ok  ' : 'FAIL'} her coding workshop opens and shows the limit${pass ? '' : `  → ${JSON.stringify(v).slice(0, 300)}`}`);
   }
+
+  // her corner: it opens, with her drawings and diary
+  await ev('h.openCorner(); await sleep(2500); return true');
+  {
+    const corner = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((p) => /corner\.html/.test(p.url));
+    let v = { error: 'no corner window' };
+    if (corner) {
+      const w = new WebSocket(corner.webSocketDebuggerUrl);
+      await new Promise((r) => { w.onopen = r; });
+      v = await new Promise((res) => {
+        w.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id === 1) res(d.result?.result?.value); };
+        w.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: "({ title: document.title, art: document.querySelectorAll('#art img, #art .empty-note').length, diary: document.querySelectorAll('#entries li').length })", returnByValue: true } }));
+        setTimeout(() => res({ error: 'timeout' }), 10000);
+      });
+      w.close();
+    }
+    const pass = Boolean(v && !v.error && /Capri/.test(v.title) && v.art >= 1 && v.diary >= 1);
+    results.push({ name: 'her corner opens with her drawings and diary', pass, v });
+    console.log(`${pass ? 'ok  ' : 'FAIL'} her corner opens with her drawings and diary${pass ? '' : `  → ${JSON.stringify(v).slice(0, 300)}`}`);
+  }
+  await check('stage 2 asks: windows, reminders by app, the week, the screen read', "const c = d.chat; return ['minimiza tudo menos o vs code', 'quando eu abrir o spotify me lembra de criar a playlist', 'o que eu fiz essa semana?', 'lê esse erro', 'mostra seus desenhos'].map((x) => (c.asked(x) || {}).kind).join()", (v) => v === 'arrange,ctxRemind,week,look,corner');
+
+  await check('stage 3: chat games, tabs (extension not loaded yet: says so)', "const c = d.chat; const kinds = ['vamos jogar forca', 'adivinha o número', 'quantas abas eu tenho?'].map((x) => { const r = c.asked(x) || {}; return r.game || r.kind; }); const tabs = await h.tabsDo({ action: 'count' }); return { kinds: kinds.join(), tabs: tabs.ok || tabs.error }", (v) => v.kinds === 'hangman,number,tabs' && (v.tabs === 'offline' || v.tabs === true));
 
   // whatever was touched, as it was
   await ev(`await h.setConfig({ micAsked: ${JSON.stringify(original.micAsked ?? false)} }); return true`);

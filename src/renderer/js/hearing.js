@@ -244,6 +244,11 @@ export class Hearing {
     const every = (SOUNDS.find(([, k]) => k === kind)?.[3] || 10) * 60000;
     const now = Date.now();
     if (now - (this.said[kind] || 0) < every || !this.free()) return;
+    // a film on (watch.js): its sounds aren't the room's; only what's really around you counts
+    if (this.watch?.on && !['alarm', 'door', 'phone'].includes(kind)) {
+      if (kind === 'bang') this.watch.startle();
+      return undefined;
+    }
     this.said[kind] = now;
     const c = this.capri;
     c.wake();

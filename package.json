@@ -56,7 +56,8 @@
       "hooks/**",
       "scripts/**",
       "package.json",
-      "LICENSE"
+      "LICENSE",
+      "extension/**"
     ],
     "asarUnpack": [
       "hooks/**",
