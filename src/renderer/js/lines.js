@@ -1101,6 +1101,14 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // the PC locked (lockwatch.js)
+    lock: {
+      hi: 'Hi, {name}! 👋 I saw you.', guest: 'Hi, {who}! 👋', stranger: 'I don’t know you… I’m keeping an eye on this PC.',
+      you: 'you', welcome: 'Welcome back, {name}!',
+      strangerWhile: 'While the PC was locked, a stranger stood in front of it at {time}, for about {mins} min.',
+      strangerWhileShort: 'While the PC was locked, a stranger came up to it at {time}, for a moment.',
+      photo: 'I took a photo (Capri/visitas).',
+    },
     // while you're away (presence.js)
     presence: {
       back: 'Oh, you’re back! While you were gone:', backLong: 'Finally! You were gone a while. Here’s what happened:',
@@ -2288,6 +2296,14 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // o PC bloqueado (lockwatch.js)
+    lock: {
+      hi: 'Oi, {name}! 👋 Te vi aqui.', guest: 'Oi, {who}! 👋', stranger: 'Não te conheço… tô de olho nesse PC.',
+      you: 'você', welcome: 'Bem-vindo de volta, {name}!',
+      strangerWhile: 'Enquanto o PC tava bloqueado, um desconhecido ficou na frente dele às {time}, por uns {mins} min.',
+      strangerWhileShort: 'Enquanto o PC tava bloqueado, um desconhecido chegou perto dele às {time}, rapidinho.',
+      photo: 'Tirei uma foto (Capri/visitas).',
+    },
     // enquanto você tá fora (presence.js)
     presence: {
       back: 'Ah, voltou! Enquanto você tava fora:', backLong: 'Até que enfim! Você sumiu um tempão. Olha o que rolou:',
@@ -2939,7 +2955,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

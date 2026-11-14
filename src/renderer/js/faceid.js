@@ -254,8 +254,9 @@ export class FaceId {
     this.look.privacy = privateMode;
     this.camera.privacy = privateMode;
     const t = this.t;
+    this.onState?.(state, this.guest, prev); // lockwatch.js: who's in front of the locked PC
     const say = (line, face = 'look', kind = 'info') => {
-      if (this.capri.stowed || this.capri.mode === 'alert') return;
+      if (this.screenLocked || this.capri.stowed || this.capri.mode === 'alert') return; // locked: nobody sees her
       this.capri.wake();
       this.capri.perform('curious', this.capri.towardCenter());
       this.panel.say({ kind, face, line, hold: 6000 });

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer, session,
+  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer, session, Notification,
 } = require('electron');
 const { randomUUID } = require('node:crypto');
 const { execFile } = require('node:child_process');
@@ -843,6 +843,7 @@ function rebuildTray() {
         { label: t.cameraLook, type: 'checkbox', checked: cfg.cameraLook === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ cameraLook: item.checked }) },
         { label: cfg.faceData ? t.faceAgain : t.faceEnroll, enabled: cfg.cameraOn === true, click: () => sendCommand('faceEnroll') },
         { label: t.lockStrangers, type: 'checkbox', checked: cfg.lockStrangers === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockStrangers: item.checked }) },
+        { label: t.lockSnap, type: 'checkbox', checked: cfg.lockSnap === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockSnap: item.checked }) },
         ...(cfg.faceData ? [{ label: t.faceForget, click: () => { updateConfig({ faceData: null }); sendCommand('faceForget'); } }] : []),
         { label: t.lockAway, type: 'checkbox', checked: cfg.lockAway === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ lockAway: item.checked }) },
         { type: 'separator' },
@@ -1431,6 +1432,27 @@ function registerIpc() {
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  // a notification of hers (on the lock screen too, if Windows shows notifications there)
+  ipcMain.on('lock:notify', (_e, { title, body } = {}) => {
+    if (!Notification.isSupported()) return;
+    new Notification({
+      title: String(title || 'Capri').slice(0, 60), body: String(body || '').slice(0, 200), silent: true,
+      icon: path.join(ROOT, 'assets', 'icons', 'tray.png'),
+    }).show();
+  });
+  // a stranger at the locked PC, photographed (only with her menu's "Photo of strangers" on)
+  ipcMain.handle('visit:save', (_e, url) => {
+    if (config.load().lockSnap !== true) return null;
+    const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(url || ''));
+    if (!m || m[1].length > 4e6) return null;
+    const dir = path.join(tasks.SHOP, 'visitas');
+    fs.mkdirSync(dir, { recursive: true });
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const file = path.join(dir, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.jpg`);
+    fs.writeFileSync(file, Buffer.from(m[1], 'base64'));
+    return file;
+  });
   // her drawings while you're away (renderer art.js): PNGs in her workshop, ~/Capri/desenhos
   ipcMain.handle('art:save', (_e, url) => {
     const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(url || ''));
@@ -1884,6 +1906,9 @@ function main() {
     // after sleep or a locked screen, once Windows has settled
     powerMonitor.on('resume', () => setTimeout(rearmOverlay, 2000));
     powerMonitor.on('unlock-screen', () => setTimeout(rearmOverlay, 1000));
+    // the PC locked and unlocked: she keeps an eye on who comes (renderer lockwatch.js)
+    powerMonitor.on('lock-screen', () => overlay?.webContents.send('pc:lockState', { locked: true }));
+    powerMonitor.on('unlock-screen', () => overlay?.webContents.send('pc:lockState', { locked: false }));
   });
 
   app.on('will-quit', () => {

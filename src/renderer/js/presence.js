@@ -87,7 +87,7 @@ export class Presence {
   quiet(on) {
     for (const m of [this.look, this.play, this.shell, this.life]) if (m) m.away = on;
     if (this.brain) this.brain.hushed = on; // (brain.away() is something else: Claude's window not in front)
-    this.camera?.setRate?.(on ? GLANCE_MS : null);
+    this.camera?.setRate?.(on ? (this.locked ? 1000 : GLANCE_MS) : null);
   }
 
   goAway() {
@@ -105,6 +105,7 @@ export class Presence {
   }
 
   goSleep() {
+    if (this.locked) return; // the PC locked: the camera keeps watching who comes (lockwatch.js)
     this.state = 'asleep';
     // the camera rests too
     if (this.camera?.stream) {

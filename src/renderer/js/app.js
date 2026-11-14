@@ -29,6 +29,7 @@ import { Hearing } from './hearing.js';
 import { FaceId } from './faceid.js';
 import { Presence } from './presence.js';
 import { Art } from './art.js';
+import { LockWatch } from './lockwatch.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -682,6 +683,9 @@ async function boot() {
   const presence = new Presence({ capri, panel, brain, host, camera, look, play, shell, life, heart, voice, chat, guide, art, face, hands: chat.hands });
   brain.presence = presence;
   chat.hands.presence = presence;
+  // the PC locked: who comes to it, a sound and a notification, and what she saw once it's unlocked
+  const lockWatch = new LockWatch({ capri, panel, brain, host, camera, face, presence, voice });
+  lockWatch.configure(config);
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
@@ -712,7 +716,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -879,6 +883,7 @@ async function boot() {
     camera.configure(cfg);
     hearing.configure(cfg);
     face.configure(cfg);
+    lockWatch.configure(cfg);
     if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;
