@@ -36,6 +36,7 @@ export class Life {
     // few minutes out and about otherwise
     this.homeIn = 150000;
     capri.homeAfter = () => (this.heart && this.heart.energy < 30 ? 15000 : this.homeIn);
+    capri.holding = () => this.holding(); // her own idle moves (home, a gaze, a nap) wait too
     this.lastMove = performance.now();
     this.mutterAt = 0;
     // her next move sooner when she's lively (the original waits 25–70 s)

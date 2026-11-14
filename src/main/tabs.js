@@ -12,12 +12,17 @@ let conn = null;           // the extension, when connected
 let browser = '';          // which browser it said it is
 const waiting = new Map(); // request id -> resolve
 
+let onEvent = () => {};
+function events(fn) { onEvent = fn; }
+
 function attach(ws, hello = {}) {
   conn?.close();
   conn = ws;
   browser = String(hello.browser || '').slice(0, 40);
   ws.on('message', (msg) => {
     if (msg?.type === 'hello') browser = String(msg.browser || '').slice(0, 40);
+    // something the extension tells her on its own: a site blocked in focus mode, opened anyway
+    if (msg?.type === 'blocked' || msg?.type === 'letThrough') onEvent({ type: msg.type, site: String(msg.site || msg.url || '').slice(0, 200) });
     const done = waiting.get(msg?.id);
     if (done) { waiting.delete(msg.id); done(msg); }
   });
@@ -55,4 +60,4 @@ function takeLast(shop) {
   return last || null;
 }
 
-module.exports = { attach, connected, ask, keep, takeLast, loadSaved, browserName: () => browser };
+module.exports = { attach, connected, ask, keep, takeLast, loadSaved, events, browserName: () => browser };

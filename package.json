@@ -23,7 +23,11 @@
     "dist": "electron-builder --win",
     "test": "node --test tests/hooks.test.js \"tests/unit/*.test.mjs\"",
     "test:unit": "node --test \"tests/unit/*.test.mjs\"",
-    "test:e2e": "node tests/e2e/run.cjs"
+    "test:e2e": "node tests/e2e/run.cjs",
+    "mcp:install": "node scripts/install-mcp.js",
+    "mcp:uninstall": "node scripts/install-mcp.js --uninstall",
+    "vendor": "node scripts/fetch-vendor.js",
+    "predist": "node scripts/fetch-vendor.js"
   },
   "keywords": [
     "claude-code",
@@ -45,7 +49,8 @@
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@mediapipe/tasks-audio": "1.2.0",
     "@mediapipe/tasks-vision": "1.2.0",
-    "@vladmandic/face-api": "1.7.15"
+    "@vladmandic/face-api": "1.7.15",
+    "psn-api": "2.18.1"
   },
   "build": {
     "appId": "capri.desktop",

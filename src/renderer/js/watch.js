@@ -3,7 +3,7 @@
 // no wandering, no looking at your screen to comment; a loud bang in it and she flinches, now and then
 // a little 🍿. When it's over (after a good while), she asks what you thought (and listens, converse.js).
 
-import { pick, rand } from './util.js';
+import { pick, rand, fmt } from './util.js';
 
 const SETTLE_MS = 20000;   // full screen this long: watching
 const LONG_MS = 10 * 60000; // watched this long: worth asking about
@@ -47,6 +47,9 @@ export class Watch {
   start() {
     this.on = true;
     this.since = Date.now();
+    this.title = null;
+    // what it is, if her browser extension can tell (a YouTube video, say)
+    this.host?.tabsDo?.({ action: 'media' }).then((r) => { if (r?.ok && r.title) this.title = r.title; }).catch(() => {});
     for (const m of [this.look, this.play]) if (m) m.watching = true;
     if (this.life) this.life.watching = true;
     const c = this.capri;
@@ -63,7 +66,8 @@ export class Watch {
         const c = this.capri;
         c.wake();
         c.perform('stretch', c.towardCenter());
-        this.panel.say({ kind: 'idle', face: 'look', line: pick(this.t.after), hold: 8000 });
+        const line = this.title ? fmt(pick(this.t.afterTitle), { title: this.title.slice(0, 80) }) : pick(this.t.after);
+        this.panel.say({ kind: 'idle', face: 'look', line, hold: 8000 });
       }, 2500);
     }
   }

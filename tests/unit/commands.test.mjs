@@ -164,3 +164,35 @@ test('her chat closes by itself after a while, never while you type, talk or she
   assert.equal(waited, 72000);
   void at;
 });
+
+test('your PS5\'s play time, and Spotify\'s login and playlists', async () => {
+  const { createRequire } = await import('node:module');
+  const req = createRequire(import.meta.url);
+  const { parseDuration } = req('../../src/main/psn.js');
+  assert.equal(Math.round(parseDuration('PT228H56M33S')), 13737);
+  assert.equal(parseDuration('PT45M'), 45);
+  assert.equal(parseDuration('P1DT2H'), 26 * 60);
+  const { loginUrl } = req('../../src/main/spotify.js');
+  const u = new URL(loginUrl('0123456789abcdef0123456789abcdef', 'http://127.0.0.1:47823/spotify/callback'));
+  assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
+  assert.match(u.searchParams.get('scope'), /user-modify-playback-state/);
+  const p = ask('cria uma playlist pra estudar');
+  assert.deepEqual([p.kind, p.about], ['playlist', 'estudar']);
+});
+
+test('a Windows notification, read', async () => {
+  const { createRequire } = await import('node:module');
+  const { parse, appName } = createRequire(import.meta.url)('../../src/main/notices.js');
+  assert.deepEqual(parse('<toast><visual><binding template="ToastGeneric"><text>Mãe</text><text>Me liga quando puder &amp; traz pão</text></binding></visual></toast>'), { title: 'Mãe', body: 'Me liga quando puder & traz pão' });
+  assert.equal(appName('5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App'), 'WhatsApp');
+  assert.equal(appName('com.squirrel.Discord.Discord'), 'Discord');
+});
+
+test('streamers going live, asked in words', () => {
+  const a = ask('me avisa quando o Gaules entrar ao vivo');
+  assert.deepEqual([a.kind, a.op, a.name, a.site], ['live', 'add', 'Gaules', 'twitch']);
+  const y = ask('me avisa quando o @alanzoka ficar ao vivo no youtube');
+  assert.deepEqual([y.name, y.site], ['alanzoka', 'youtube']);
+  const r = ask('para de me avisar do Gaules');
+  assert.deepEqual([r.op, r.name], ['remove', 'Gaules']);
+});

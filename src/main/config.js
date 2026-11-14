@@ -47,6 +47,16 @@ const DEFAULTS = {
   chatty: 'normal',
   pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
   localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
+  lives: [], // streamers to watch for: [{ site: 'twitch'|'youtube', name }] (lives.js)
+  notesDir: null, // a folder of yours (an Obsidian vault…) where she keeps her diary, your to-dos and what she knows, in Markdown
+  voiceLocal: false, // her offline voice: Whisper on this PC instead of Groq (src/whisper)
+  noticesOn: false, // her menu › Read my notifications (notices.js): off until you turn it on
+  spotifyClient: null, // your Spotify app's Client ID (spotify.js)
+  spotifyRefresh: null, // its refresh token, encrypted
+  psnRefresh: null, // your PS5 (psn.js): PSN's refresh token, encrypted (enc:…); null = not connected
+  psnAccount: null,
+  psnMinutes: {}, // minutes per game at the last daily look, to know what's new
+  psnSyncDay: null,
   githubWatch: true, // your GitHub notifications (CI failed, reviews, mentions) through gh in WSL (github.js)
   ghSeen: [],
   ctxReminders: [], // "when I open VS Code, remind me to…": [{ id, app, text, made }] (main.js)

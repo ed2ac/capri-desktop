@@ -171,6 +171,13 @@ export class Daily {
     this.limitsTick();
     this.specialDay(now);
     if (Date.now() - this.weatherAt > 60 * 60000 && this.cfg.city) this.weatherBody();
+    // the sunset, right when it happens (with the sky from her last look)
+    const sun = this.sky?.sunset;
+    if (sun && Math.abs(Date.now() - sun) < 10 * 60000 && this.brain.t.sky && this.skySaid?.sunset !== new Date().toDateString() && this.free()) {
+      this.skySaid = { ...(this.skySaid || {}), sunset: new Date().toDateString() };
+      this.capri.perform('look', this.capri.towardCenter());
+      this.panel.say({ kind: 'idle', face: 'look', line: this.brain.t.sky.sunset, hold: 6000 });
+    }
   }
 
   // your calendar: a word five minutes before each event
@@ -288,6 +295,17 @@ export class Daily {
     this.weatherAt = Date.now();
     const w = await this.host.weather(this.cfg.city, LANGS[this.brain.lang] || 'en').catch(() => null);
     if (!w || w.error) return;
+    this.sky = w;
+    // what's coming, once a day each: rain in a few hours, the air, a clear night
+    const today = new Date().toDateString();
+    const once = (key) => { if (this.skySaid?.[key] === today) return false; this.skySaid = { ...(this.skySaid || {}), [key]: today }; return true; };
+    const s = this.brain.t.sky;
+    if (s && w.rainIn && w.rainIn <= 3 && once('rain')) return this.panel.say({ kind: 'info', face: 'look', line: fmt(s.rainSoon, { hours: w.rainIn, rain: w.rainSoon }), hold: 6000 });
+    if (s && w.aqi >= 150 && once('air')) return this.panel.say({ kind: 'info', face: 'aside', line: fmt(s.air, { aqi: w.aqi }), hold: 6000 });
+    if (s && w.clearNight && new Date().getHours() >= 19 && once('stars')) {
+      this.capri.gaze?.();
+      return this.panel.say({ kind: 'idle', face: 'laugh', line: s.stars, hold: 6000 });
+    }
     const kind = w.temp <= 12 ? 'cold' : w.temp >= 32 ? 'hot' : (w.code >= 51 && w.code <= 82) || w.code >= 95 ? 'rain' : null;
     if (!kind || Math.random() < 0.5) return;
     this.capri.perform(kind === 'cold' ? 'shake' : kind === 'hot' ? 'overheat' : 'huff', this.capri.towardCenter());
@@ -466,12 +484,14 @@ export class Daily {
     if (!on) {
       if (!this.focus) return { line: t.focusStop, face: 'aside' };
       this.focus = null;
+      this.host.tabsDo?.({ action: 'focus', query: 'off' }).catch(() => {});
       this.activity.quiet = false;
       this.panel.setTicker(null);
       return { line: t.focusStop, face: 'look' };
     }
     const m = Math.max(5, Math.min(240, Number(minutes) || 50));
     this.focus = { until: Date.now() + m * 60000, minutes: m, nagAt: 0 };
+    this.host.tabsDo?.({ action: 'focus', query: 'on', ids: [m] }).catch(() => {}); // her extension blocks what distracts (if it's there)
     this.activity.quiet = true; // no comments about what you do while you focus: only nagging
     const next = this.todos().find((x) => !x.done);
     return { line: fmt(t.focusStart, { minutes: m }) + (next ? `\n${fmt(t.focusOn, { text: next.text })}` : ''), face: 'smug' };

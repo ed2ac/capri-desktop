@@ -11,3 +11,8 @@
 .entries .date { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--data); text-transform: uppercase; }
 .entries .text { margin-top: 4px; font-size: 15px; line-height: 1.45; }
 .empty-note { color: var(--paper-3); font-family: var(--font-mono); font-size: 12px; }
+
+#profile .date { margin-top: 14px; }
+.entries li.mem { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.entries li.mem .text { flex: 1; margin: 0; font-size: 14px; }
+#forget-all { margin-top: 16px; }

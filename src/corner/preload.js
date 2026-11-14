@@ -7,4 +7,5 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('corner', {
   data: () => ipcRenderer.invoke('corner:data'),
   reveal: (name) => ipcRenderer.send('corner:reveal', String(name || '')),
+  forget: (id) => ipcRenderer.invoke('corner:forget', String(id || '')),
 });

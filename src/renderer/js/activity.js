@@ -230,6 +230,7 @@ export class Activity {
   // a song that started playing (daily.js, from Windows' media controls): kept for the day, and now
   // and then something to say about it
   onSong(m) {
+    this.memory?.song(m);
     if (!this.auto) return;
     const what = m.artist ? `${m.artist} - ${m.title}` : m.title;
     this.log({ kind: 'music', where: 'music', what }, 0);

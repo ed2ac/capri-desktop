@@ -560,6 +560,12 @@ export class Capri {
       if (!reducedMotion.matches && this.stance !== 'peek') this.shed();
     }
 
+    // a question of hers on screen (life.js): she stays as she is, or it'd go off with her
+    if (this.holding?.()) {
+      this.lastActivity = now;
+      return;
+    }
+
     if (this.mode === 'idle' && this.stance !== 'peek' && now > this.nextGaze) {
       this.nextGaze = now + rand(90000, 180000);
       this.gaze();

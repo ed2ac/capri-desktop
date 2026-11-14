@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- Her ears, offline: Whisper on this PC (transformers.js, in a hidden window of its own, isolated so
+       its engine can use several cores). Only sound comes in, only text goes out. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-gsyjpERkfRT6UKvBoUby87h+xX82+q5P1GYOZF5IwiA='; worker-src 'self' blob:; connect-src 'self' capri: blob: data:">
+  <title>Capri — offline voice</title>
+</head>
+<body>
+  <script type="importmap">{"imports":{"onnxruntime-web/webgpu":"../vendor/transformers/ort.webgpu.min.mjs","onnxruntime-common":"../vendor/transformers/ort.webgpu.min.mjs"}}</script>
+  <script type="module" src="whisper.js"></script>
+</body>
+</html>

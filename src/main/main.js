@@ -79,14 +79,27 @@ function forgetChats() {
 // capri://app/...        -> files of this repo
 // capri://usersounds/... -> the user's own sound overrides
 function serveProtocol() {
-  protocol.handle('capri', (request) => {
+  protocol.handle('capri', async (request) => {
     const url = new URL(request.url);
-    const base = url.host === 'usersounds' ? userSoundsDir() : ROOT;
-    const target = path.resolve(base, '.' + decodeURIComponent(url.pathname));
+    let pathname = decodeURIComponent(url.pathname);
+    // models she downloaded (her offline voice), kept in her data folder: capri://app/models/…
+    const models = url.host === 'app' && pathname.startsWith('/models/');
+    if (models) pathname = pathname.slice('/models'.length);
+    const base = url.host === 'usersounds' ? userSoundsDir() : models ? MODELS_DIR : ROOT;
+    const target = path.resolve(base, '.' + pathname);
     if (target !== base && !target.startsWith(base + path.sep)) {
       return new Response('forbidden', { status: 403 });
     }
-    return net.fetch(pathToFileURL(target).toString());
+    const res = await net.fetch(pathToFileURL(target).toString());
+    // her offline voice's window is isolated (so its engine can use several cores): what it loads says it may be
+    const headers = new Headers(res.headers);
+    headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+    if (url.pathname.startsWith('/src/whisper/') || url.pathname.startsWith('/src/vendor/transformers/')) { // its page and its engine's workers
+      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+    }
+    if (/\.wasm$/.test(pathname)) headers.set('content-type', 'application/wasm');
+    return new Response(res.body, { status: res.status, headers });
   });
 }
 
@@ -290,6 +303,8 @@ function updateConfig(patch) {
   config.save(patch);
   if ('senseInput' in patch) windowWatch?.sense(patch.senseInput === true);
   if ('theme' in patch || 'language' in patch) setTimeout(workSend, 0); // her workshop follows her looks
+  if ('noticesOn' in patch) setTimeout(noticesSync, 0);
+  if ('todos' in patch || 'profile' in patch || 'notesDir' in patch) notesSoon();
   if ('earOn' in patch || 'wakeWord' in patch) wakeSync();
   if ('watchActivity' in patch) {
     windowWatch?.activity(patch.watchActivity);
@@ -424,8 +439,220 @@ async function githubTick() {
   if (fresh.length) overlay.webContents.send('gh:news', fresh.slice(0, 5));
 }
 
+// ---- Your PS5 (psn.js): what you're playing now, and your games' play time once a day ----
+const psn = require('./psn');
+let psnLast = { game: null, since: 0 };
+let psnTimer = null;
+const psnKeep = (r) => config.save({ psnRefresh: setup.sealKey(r) });
+function psnStart() {
+  const cfg = config.load();
+  if (!cfg.psnRefresh) return;
+  psn.use(setup.openKey(cfg.psnRefresh), cfg.psnAccount);
+  clearInterval(psnTimer);
+  const tick = async () => {
+    const p = await psn.presence(psnKeep).catch((err) => ({ error: err.message }));
+    if (p.error) { if (/refresh|401|invalid_grant/i.test(p.error)) overlay?.webContents.send('psn:event', { type: 'expired' }); return; }
+    const game = p.online ? p.game : null;
+    if (game !== psnLast.game) {
+      if (psnLast.game) overlay?.webContents.send('psn:event', { type: 'stop', game: psnLast.game, minutes: Math.round((Date.now() - psnLast.since) / 60000) });
+      if (game) overlay?.webContents.send('psn:event', { type: 'start', game, platform: p.platform });
+      psnLast = { game, since: Date.now() };
+    }
+    // once a day: each game's play time, what's new since the last look into her memory
+    const day = new Date().toDateString();
+    if (config.load().psnSyncDay !== day) {
+      const list = await psn.games(psnKeep).catch(() => null);
+      if (list) {
+        const before = config.load().psnMinutes || {};
+        const now = Object.fromEntries(list.map((g) => [g.name, g.minutes]));
+        const news = list.map((g) => ({ name: g.name, minutes: g.minutes - (before[g.name] || 0) })).filter((g) => g.minutes > 0);
+        config.save({ psnMinutes: now, psnSyncDay: day });
+        if (news.length) overlay?.webContents.send('psn:games', news.slice(0, 40));
+      }
+    }
+  };
+  setTimeout(() => tick().catch(() => {}), 20000);
+  psnTimer = setInterval(() => tick().catch(() => {}), 2 * 60000);
+}
+
+// ---- Streamers going live (lives.js): every 5 minutes, the ones you asked her to watch for ----
+const liveNow = new Set();
+async function livesTick() {
+  const list = config.load().lives || [];
+  const lives = require('./lives');
+  for (const l of list) {
+    const r = await lives.check(l).catch(() => null);
+    const key = `${l.site}:${l.name.toLowerCase()}`;
+    if (!r) continue;
+    if (r.live && !liveNow.has(key)) overlay?.webContents.send('lives:on', { ...l, url: r.url, title: r.title });
+    if (r.live) liveNow.add(key); else liveNow.delete(key);
+  }
+}
+
+const fmtLabel = (s, v) => String(s).replace('{folder}', v);
+
+// ---- Her notes in a folder of yours (an Obsidian vault…): her diary, your to-dos, what she knows ----
+let notesTimer = null;
+function notesSoon() {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(() => { try { writeNotes(); } catch (err) { console.error('[capri] notes:', err.message); } }, 5000);
+}
+function writeNotes() {
+  const cfg = config.load();
+  if (!cfg.notesDir || !fs.existsSync(cfg.notesDir)) return;
+  const root = path.join(cfg.notesDir, 'Capri');
+  const put = (rel, text) => {
+    const file = path.join(root, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== text) fs.writeFileSync(file, text);
+  };
+  const { diary = {} } = readMemory();
+  for (const [date, text] of Object.entries(diary)) put(path.join('Diário', `${date}.md`), `---\ndate: ${date}\ntags: [capri, diario]\n---\n\n${text}\n`);
+  const todos = Array.isArray(cfg.todos) ? cfg.todos : [];
+  put('Tarefas.md', `# Tarefas\n\n${todos.map((t) => `- [${t.done ? 'x' : ' '}] ${t.text}`).join('\n') || '_(nenhuma)_'}\n`);
+  const titles = { told: 'Você pediu pra lembrar', likes: 'Gosta de', dislikes: 'Não gosta de', people: 'Pessoas', plans: 'Planos', projects: 'Projetos', routine: 'Rotina', fact: 'Sobre você', music: 'Música', games: 'Jogos', freeTime: 'Tempo livre no PC' };
+  const profile = Array.isArray(cfg.profile) ? cfg.profile : [];
+  const sections = Object.entries(titles).map(([k, title]) => {
+    const items = profile.filter((i) => i.kind === k).sort((a, b) => b.weight - a.weight).slice(0, 25);
+    return items.length ? `## ${title}\n\n${items.map((i) => `- ${i.label}`).join('\n')}` : '';
+  }).filter(Boolean);
+  put('Sobre mim.md', `# O que a Capri sabe de mim\n\n${sections.join('\n\n') || '_(ainda nada)_'}\n`);
+}
+
+// ---- Her offline voice: Whisper on this PC (src/whisper), its model downloaded once (~250 MB) ----
+const MODELS_DIR = path.join(app.getPath('userData'), 'models');
+const WHISPER = 'onnx-community/whisper-small';
+const WHISPER_FILES = ['config.json', 'generation_config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json',
+  'special_tokens_map.json', 'added_tokens.json', 'normalizer.json', 'vocab.json', 'merges.txt',
+  'onnx/encoder_model_quantized.onnx', 'onnx/decoder_model_merged_quantized.onnx'];
+let whisperWin = null;
+let whisperOk = false;
+const whisperJobs = new Map();
+const whisperDir = () => path.join(MODELS_DIR, WHISPER);
+const whisperHere = () => WHISPER_FILES.filter((f) => f.startsWith('onnx/')).every((f) => fs.existsSync(path.join(whisperDir(), f)));
+const whisperReady = () => whisperOk && whisperWin && !whisperWin.isDestroyed();
+
+// the model's files from Hugging Face, with progress (0..1) to her overlay
+async function whisperDownload() {
+  const total = { done: 0, size: 0 };
+  for (const f of WHISPER_FILES) {
+    const dest = path.join(whisperDir(), f);
+    if (fs.existsSync(dest)) continue;
+    const res = await fetch(`https://huggingface.co/${WHISPER}/resolve/main/${f}`);
+    if (res.status === 404 && !f.startsWith('onnx/')) continue; // not every model has every small file
+    if (!res.ok) throw new Error(`${f}: HTTP ${res.status}`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const size = Number(res.headers.get('content-length') || 0);
+    total.size += size;
+    const part = `${dest}.part`;
+    const out = fs.createWriteStream(part);
+    for await (const chunk of res.body) {
+      out.write(chunk);
+      total.done += chunk.length;
+      if (size > 1e6) overlay?.webContents.send('voice:progress', { file: f, done: total.done, size: Math.max(total.size, 250e6) });
+    }
+    await new Promise((r) => out.end(r));
+    fs.renameSync(part, dest);
+  }
+}
+
+function whisperStart() {
+  if (whisperWin || config.load().voiceLocal !== true || !whisperHere()) return;
+  whisperWin = new BrowserWindow({
+    show: false, skipTaskbar: true,
+    webPreferences: { preload: path.join(__dirname, '..', 'whisper', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+  });
+  whisperWin.loadURL('capri://app/src/whisper/whisper.html');
+  whisperWin.on('closed', () => { whisperWin = null; whisperOk = false; });
+}
+function whisperStop() {
+  whisperWin?.destroy();
+  whisperWin = null;
+  whisperOk = false;
+}
+function whisperJob(audio, lang) {
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    whisperJobs.set(id, resolve);
+    whisperWin.webContents.send('whisper:job', { id, audio, lang });
+    setTimeout(() => { if (whisperJobs.delete(id)) reject(new Error('timeout')); }, 60000);
+  });
+}
+
+// ---- Your Windows notifications (notices.js): only with her menu's "Read my notifications" on ----
+let noticesTimer = null;
+function noticesSync() {
+  const on = config.load().noticesOn === true && process.platform === 'win32';
+  const notices = require('./notices');
+  if (!on) { clearInterval(noticesTimer); noticesTimer = null; notices.close(); return; }
+  if (noticesTimer) return;
+  try { notices.fresh(); } catch { /* learns where the list is */ }
+  noticesTimer = setInterval(() => {
+    let list = [];
+    try { list = notices.fresh(); } catch { notices.close(); }
+    if (list.length) overlay?.webContents.send('notices', list);
+  }, 15000);
+}
+
+// ---- Your Spotify (spotify.js): what's playing, your top artists, songs played, playlists ----
+const spotify = require('./spotify');
+const spotifyKeep = (r) => config.save({ spotifyRefresh: setup.sealKey(r) });
+let spotifyTimer = null;
+let spotifySong = '';
+function spotifyStart() {
+  const cfg = config.load();
+  if (!cfg.spotifyClient || !cfg.spotifyRefresh) return;
+  spotify.use(cfg.spotifyClient, setup.openKey(cfg.spotifyRefresh));
+  clearInterval(spotifyTimer);
+  const tick = async () => {
+    const n = await spotify.now(spotifyKeep).catch(() => null);
+    const key = n?.playing ? `${n.artist} - ${n.title}` : '';
+    if (key && key !== spotifySong) overlay?.webContents.send('spotify:now', n);
+    spotifySong = key;
+    // your top artists, once a week
+    const week = Math.floor(Date.now() / (7 * 86400000));
+    if (config.load().spotifyTopWeek !== week) {
+      const top = await spotify.topArtists(spotifyKeep).catch(() => null);
+      if (top) { config.save({ spotifyTopWeek: week }); overlay?.webContents.send('spotify:top', top); }
+    }
+  };
+  setTimeout(() => tick().catch(() => {}), 15000);
+  spotifyTimer = setInterval(() => tick().catch(() => {}), 30000);
+}
+
+// ---- Claude Code talking to you through her (hooks/capri-mcp.js, over the bridge's /mcp) ----
+const mcpAsks = new Map(); // id -> resolve(answer)
+function onMcp({ tool, args = {}, cwd = '' } = {}) {
+  if (!overlay) return { ok: false, error: 'not ready' };
+  const project = String(cwd || '').split('/').filter(Boolean).pop() || '';
+  const text = (s, n) => String(s || '').slice(0, n);
+  if (tool === 'capri_say') {
+    overlay.webContents.send('mcp:say', { text: text(args.text, 600), mood: ['done', 'alert'].includes(args.mood) ? args.mood : 'info', project });
+    return { ok: true };
+  }
+  if (tool === 'capri_progress') {
+    overlay.webContents.send('mcp:progress', { text: text(args.text, 120), project });
+    return { ok: true };
+  }
+  if (tool === 'capri_notify') {
+    if (Notification.isSupported()) new Notification({ title: text(args.title || 'Claude', 60), body: text(args.text, 200), silent: false, icon: path.join(ROOT, 'assets', 'icons', 'tray.png') }).show();
+    overlay.webContents.send('mcp:say', { text: text(args.text, 300), mood: 'info', project });
+    return { ok: true };
+  }
+  if (tool === 'capri_ask') {
+    const id = randomUUID();
+    return new Promise((resolve) => {
+      mcpAsks.set(id, (answer) => resolve({ ok: true, answer }));
+      overlay.webContents.send('mcp:ask', { id, question: text(args.question, 400), options: (Array.isArray(args.options) ? args.options : []).slice(0, 4).map((o) => text(o, 40)), project });
+      setTimeout(() => { if (mcpAsks.has(id)) { mcpAsks.delete(id); overlay?.webContents.send('mcp:gone', { id }); resolve({ ok: true, answer: null }); } }, 5 * 60 * 1000);
+    });
+  }
+  return { ok: false, error: 'unknown tool' };
+}
+
 // ---- Your browser's tabs, through her extension (extension/, tabs.js) ----
 const tabs = require('./tabs');
+tabs.events((e) => overlay?.webContents.send('tabs:event', e));
 const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 async function tabsDo({ action, query = '', ids = [] } = {}) {
   if (!tabs.connected()) return { ok: false, error: 'offline' };
@@ -464,8 +691,28 @@ async function tabsDo({ action, query = '', ids = [] } = {}) {
     return r.ok ? { ok: true, count: set.tabs.length } : r;
   }
   if (action === 'page') return tabs.ask('page', {}, 10000);
+  if (action === 'media') return tabs.ask('media', {}, 6000);
+  if (action === 'sites') return tabs.ask('sites', { day: typeof query === 'string' && /^\d{4}-\d\d-\d\d$/.test(query) ? query : null, days: Number(ids?.[0]) || 1 });
+  if (action === 'focus') {
+    const block = config.load().focusSites || ['youtube.com', 'instagram.com', 'x.com', 'twitter.com', 'tiktok.com', 'facebook.com', 'reddit.com', 'twitch.tv', 'netflix.com', 'kwai.com'];
+    return tabs.ask('focus', { on: query === 'on', minutes: Number(ids?.[0]) || 50, block });
+  }
   return { ok: false, error: 'action' };
 }
+// her extension, already loaded from her workshop: kept up to date with this version of her
+function refreshExtension() {
+  const from = path.join(ROOT, 'extension');
+  const to = path.join(tasks.SHOP, 'extensao');
+  if (!fs.existsSync(path.join(to, 'manifest.json'))) return false;
+  let changed = false;
+  for (const f of fs.readdirSync(from)) {
+    const data = fs.readFileSync(path.join(from, f));
+    const dest = path.join(to, f);
+    if (!fs.existsSync(dest) || !fs.readFileSync(dest).equals(data)) { fs.writeFileSync(dest, data); changed = true; }
+  }
+  return changed;
+}
+
 // her extension, put where your browser can load it from (it can't from inside her app's archive)
 function installExtension() {
   const from = path.join(ROOT, 'extension');
@@ -504,6 +751,7 @@ function cornerData() {
   return {
     drawings, diary: Object.entries(diary).sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([date, text]) => ({ date, text })),
     achievements: cfg.achievements || [], lang: cfg.language, theme: cfg.theme,
+    profile: Array.isArray(cfg.profile) ? cfg.profile : [],
   };
 }
 
@@ -837,6 +1085,12 @@ function rebuildTray() {
     { label: t.workshop, click: () => openWorkshop() },
     { label: t.corner, click: () => openCorner() },
     { label: t.tabsExt, click: () => installExtension() },
+    cfg.spotifyRefresh
+      ? { label: t.spotifyOn, click: () => overlay?.webContents.send('spotify:disconnect-ask') }
+      : { label: t.spotifyConnect, click: () => sendCommand('spotifySetup') },
+    cfg.psnRefresh
+      ? { label: t.psnOn, click: () => { overlay?.webContents.send('psn:disconnect-ask'); } }
+      : { label: t.psnConnect, click: () => sendCommand('psnSetup') },
     {
       label: t.programs,
       submenu: [
@@ -848,6 +1102,11 @@ function rebuildTray() {
         })(),
         { type: 'separator' },
         { label: t.openShop, click: () => { fs.mkdirSync(tasks.PROGRAMS, { recursive: true }); shell.openPath(tasks.SHOP); } },
+        { label: cfg.notesDir ? fmtLabel(t.notesOn, path.basename(cfg.notesDir)) : t.notesDir, click: async () => {
+          if (cfg.notesDir) { updateConfig({ notesDir: null }); rebuildTray(); return; }
+          const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.notesDir, properties: ['openDirectory'] });
+          if (!canceled && filePaths[0]) { updateConfig({ notesDir: filePaths[0] }); rebuildTray(); }
+        } },
         { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
         { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
       ],
@@ -1010,6 +1269,8 @@ function rebuildTray() {
         { label: t.cameraLook, type: 'checkbox', checked: cfg.cameraLook === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ cameraLook: item.checked }) },
         { label: cfg.faceData ? t.faceAgain : t.faceEnroll, enabled: cfg.cameraOn === true, click: () => sendCommand('faceEnroll') },
         { label: t.lockStrangers, type: 'checkbox', checked: cfg.lockStrangers === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockStrangers: item.checked }) },
+        { label: t.voiceLocal, type: 'checkbox', checked: cfg.voiceLocal === true, click: (item) => sendCommand('voiceLocal', { on: item.checked }) },
+        { label: t.noticesOn, type: 'checkbox', checked: cfg.noticesOn === true, click: (item) => updateConfig({ noticesOn: item.checked }) },
         { label: t.gestures, type: 'checkbox', checked: cfg.gestures !== false, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ gestures: item.checked }) },
         { label: t.converse, type: 'checkbox', checked: cfg.converse !== false, enabled: cfg.micAsked === true, click: (item) => updateConfig({ converse: item.checked }) },
         { label: t.lockSnap, type: 'checkbox', checked: cfg.lockSnap === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockSnap: item.checked }) },
@@ -1534,6 +1795,11 @@ function registerIpc() {
   // your voice, to text: Groq's free Whisper, with the key you gave her (mic.js). The recording goes
   // there and nowhere else, and is never kept.
   ipcMain.handle('mic:transcribe', async (_e, { audio, lang } = {}) => {
+    // offline voice on (her menu, model downloaded): Whisper on this PC, nothing sent
+    if (config.load().voiceLocal === true && whisperReady()) {
+      const r = await whisperJob(audio, lang).catch((err) => ({ error: err.message }));
+      if (!r.error) return { text: r.text, local: true };
+    }
     const key = setup.openKeys(config.load().apiKeys || {}).groq;
     if (!key) return { error: 'nokey' };
     if (!(audio instanceof ArrayBuffer || ArrayBuffer.isView(audio)) || !audio.byteLength) return { error: 'empty' };
@@ -1612,12 +1878,85 @@ function registerIpc() {
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  // "me avisa quando o X entrar ao vivo": added, removed, listed
+  ipcMain.handle('lives:set', async (_e, { op, site, name } = {}) => {
+    const lives = require('./lives');
+    const who = lives.clean(name);
+    const list = config.load().lives || [];
+    if (op === 'list') return { ok: true, list };
+    if (!who) return { ok: false };
+    const s2 = site === 'youtube' ? 'youtube' : 'twitch';
+    const rest = list.filter((l) => !(l.name.toLowerCase() === who.toLowerCase() && (op === 'remove' || l.site === s2)));
+    if (op === 'remove') { config.save({ lives: rest }); return { ok: rest.length < list.length, name: who }; }
+    config.save({ lives: [...rest, { site: s2, name: who }].slice(-30) });
+    const now = await lives.check({ site: s2, name: who }).catch(() => null);
+    if (now?.live) liveNow.add(`${s2}:${who.toLowerCase()}`);
+    return { ok: true, name: who, site: s2, live: Boolean(now?.live), url: now?.url };
+  });
+  ipcMain.on('whisper:ready', (_e, info = {}) => { whisperOk = Boolean(info.ok); overlay?.webContents.send('voice:ready', info); });
+  ipcMain.on('whisper:done', (_e, { id, ...r } = {}) => { const done = whisperJobs.get(id); if (done) { whisperJobs.delete(id); done(r); } });
+  // her offline voice turned on: the model fetched if it isn't here yet, then her listening window
+  ipcMain.handle('voice:local', async (_e, on) => {
+    if (!on) { updateConfig({ voiceLocal: false }); whisperStop(); return { ok: true }; }
+    try {
+      await whisperDownload();
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+    updateConfig({ voiceLocal: true });
+    whisperStart();
+    return { ok: true };
+  });
+  // your Spotify: your app's Client ID, then your login in the browser (back on the bridge)
+  ipcMain.handle('spotify:login', (_e, id) => {
+    const client = String(id || '').trim();
+    if (!/^[a-f0-9]{32}$/i.test(client)) return { ok: false, error: 'format' };
+    config.save({ spotifyClient: client });
+    shell.openExternal(spotify.loginUrl(client, `http://127.0.0.1:${PORT}/spotify/callback`));
+    return { ok: true };
+  });
+  ipcMain.handle('spotify:play', (_e, q) => (spotify.connected() ? spotify.play(String(q || '').slice(0, 200), spotifyKeep).catch((err) => ({ ok: false, error: err.message })) : { ok: false, error: 'off' }));
+  ipcMain.handle('spotify:playlist', (_e, { name, songs } = {}) => (spotify.connected() ? spotify.playlist(String(name || 'Capri'), (Array.isArray(songs) ? songs : []).map(String), spotifyKeep).catch((err) => ({ ok: false, error: err.message })) : { ok: false, error: 'off' }));
+  ipcMain.handle('spotify:on', () => spotify.connected());
+  ipcMain.on('spotify:disconnect', () => {
+    clearInterval(spotifyTimer);
+    config.save({ spotifyRefresh: null });
+    spotify.use(null, null);
+    rebuildTray();
+  });
+  // your PS5: connected with the NPSSO you pasted in her panel (never kept as it is: only its tokens, encrypted)
+  ipcMain.handle('psn:connect', async (_e, npsso) => {
+    const r = await psn.connect(npsso);
+    if (!r.ok) return r;
+    config.save({ psnRefresh: setup.sealKey(r.refresh), psnAccount: r.account, psnSyncDay: null });
+    psnStart();
+    rebuildTray();
+    return { ok: true };
+  });
+  ipcMain.on('psn:disconnect', () => {
+    clearInterval(psnTimer);
+    config.save({ psnRefresh: null, psnAccount: null });
+    rebuildTray();
+  });
+  ipcMain.on('mcp:answer', (_e, { id, answer } = {}) => {
+    const done = mcpAsks.get(id);
+    if (!done) return;
+    mcpAsks.delete(id);
+    done(answer == null ? null : String(answer).slice(0, 2000));
+  });
   ipcMain.handle('tabs:do', (_e, req) => tabsDo(req && typeof req === 'object' ? req : {}).catch((err) => ({ ok: false, error: err.message })));
   ipcMain.handle('corner:data', () => cornerData());
   ipcMain.on('corner:reveal', (_e, name) => {
     if (typeof name === 'string' && /^[\w-]+\.png$/i.test(name)) shell.showItemInFolder(path.join(ART_DIR, name));
   });
   ipcMain.on('corner:open', () => openCorner());
+  // her memory of you, from her corner: one thing forgotten, or all of it
+  ipcMain.handle('corner:forget', (_e, id) => {
+    const cfg = config.load();
+    const profile = id === '*' ? [] : (cfg.profile || []).filter((i) => i.id !== id);
+    updateConfig({ profile, memories: profile.filter((i) => i.kind === 'told').map((i) => i.label) });
+    return cornerData();
+  });
   // a task for later (hands.js, or the workshop while one runs)
   ipcMain.handle('work:queue', (_e, { prompt, folder, when } = {}) => {
     if (typeof prompt !== 'string' || !prompt.trim()) return null;
@@ -1701,6 +2040,7 @@ function registerIpc() {
     if (days && typeof days === 'object') patch.days = days;
     if (diary && typeof diary === 'object') patch.diary = diary;
     if (Object.keys(patch).length) saveMemory(patch);
+    if (patch.diary) notesSoon();
   });
   // how hard the processor works, in %, since the last time she asked (pc.js)
   let cpuBefore = null;
@@ -2049,6 +2389,13 @@ function main() {
     // her local model, ready for her: Ollama started if it's asleep (it may not start with Windows)
     setTimeout(() => wakeOllama().then(() => refreshModels()).catch(() => {}), 4000);
     ctxWatch(); // reminders tied to an app, from before
+    psnStart(); // your PS5, if connected
+    spotifyStart(); // your Spotify, if connected
+    noticesSync(); // your notifications, if she may read them
+    setTimeout(() => livesTick().catch(() => {}), 90000);
+    setInterval(() => livesTick().catch(() => {}), 5 * 60000);
+    whisperStart(); // her offline voice, if it's on
+    try { if (refreshExtension()) setTimeout(() => sendCommand('tabsUpdated'), 15000); } catch { /* not there */ }
     setTimeout(() => githubTick().catch(() => {}), 60000);
     setInterval(() => githubTick().catch(() => {}), 10 * 60000);
     // how much of your Claude plan is used (free to ask): now and then
@@ -2064,6 +2411,17 @@ function main() {
     createBridge({
       port: PORT,
       onTabs: (ws) => tabs.attach(ws),
+      onMcp: (body) => onMcp(body),
+      onSpotify: async (query) => {
+        const r = await spotify.callback(query);
+        if (r.ok) {
+          config.save({ spotifyRefresh: setup.sealKey(r.refresh), spotifyTopWeek: null });
+          spotifyStart();
+          rebuildTray();
+          overlay?.webContents.send('spotify:connected');
+        }
+        return r;
+      },
       // her own Claude Code chat's hooks would cover its answer with theirs
       onEvent: (evt) => {
         // your terminal (hooks/capri-shell.sh), not an AI: her menu › React to my terminal

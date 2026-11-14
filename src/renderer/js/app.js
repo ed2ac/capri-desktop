@@ -34,6 +34,7 @@ import { Converse } from './converse.js';
 import { Gestures } from './gestures.js';
 import { Watch } from './watch.js';
 import { Games } from './games.js';
+import { Memory } from './memory.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -701,6 +702,7 @@ async function boot() {
   converse.configure(config);
   // watching something in full screen together (watch.js)
   const watch = new Watch({ capri, panel, brain, look, play, life, voice });
+  watch.host = host;
   converse.watch = watch;
   const sayShown = panel.say.bind(panel);
   panel.say = (msg) => {
@@ -751,6 +753,136 @@ async function boot() {
       } else panel.say({ kind: 'info', face: 'look', line, hold: 8000, tag: 'GITHUB' });
     }, i * 9000));
   };
+  // Claude Code talking to you through her (main onMcp, hooks/capri-mcp.js)
+  host.onMcpSay?.(({ text, mood, project }) => {
+    const line = text;
+    if (presence.note(fmt(brain.t.mcp.away, { text: line, project: project || 'Claude' }))) return; // away: when you're back
+    capri.wake();
+    capri.perform(mood === 'done' ? 'hop' : mood === 'alert' ? 'alarm' : 'curious', capri.towardCenter());
+    if (mood === 'alert') voice.play('alert');
+    panel.say({ kind: mood === 'done' ? 'done' : mood === 'alert' ? 'alert' : 'info', face: mood === 'alert' ? 'wide' : 'look', tag: project ? `CLAUDE.${project.toUpperCase()}` : 'CLAUDE', line, hold: Math.min(16000, 5000 + line.length * 60) });
+  });
+  let mcpTickerTimer = null;
+  host.onMcpProgress?.(({ text, project }) => {
+    clearTimeout(mcpTickerTimer);
+    if (!text) return panel.setTicker(null);
+    panel.setTicker({ verb: project ? project.toUpperCase().slice(0, 10) : 'CLAUDE', target: text });
+    mcpTickerTimer = setTimeout(() => panel.setTicker(null), 10 * 60000);
+    return undefined;
+  });
+  const mcpPending = new Map(); // id -> close it (answered elsewhere, or timed out)
+  host.onMcpAsk?.(({ id, question, options, project }) => {
+    const m = brain.t.mcp;
+    capri.wake();
+    voice.play('alert');
+    let done = false;
+    const answer = (a) => { if (done) return; done = true; mcpPending.delete(id); host.mcpAnswer(id, a); };
+    guide.scene(async () => {
+      capri.perform('alarm', capri.towardCenter());
+      const tag = project ? `CLAUDE.${project.toUpperCase()}` : 'CLAUDE';
+      mcpPending.set(id, () => { done = true; guide.answer(null); });
+      if (options.length) {
+        const picked = await guide.ask({ face: 'wide', badge: m.badge, line: fmt(m.asks, { project: project || 'Claude' }), quote: question, actions: options.map((o, i) => ({ id: String(i), label: o, primary: i === 0 })) });
+        if (picked != null && picked !== 'gone') answer(options[Number(picked)]);
+      } else {
+        const r = await guide.askText({ face: 'wide', line: fmt(m.asks, { project: project || 'Claude' }), quote: question, placeholder: m.placeholder, send: m.send, tag });
+        if (r?.text) answer(r.text);
+      }
+    });
+  });
+  host.onMcpGone?.(({ id }) => mcpPending.get(id)?.());
+  // your Windows notifications (main notices.js, her menu): held during focus, kept while you're away,
+  // the urgent ones called out; "o que chegou?" in her chat
+  const notices = { held: [], recent: [] };
+  chat.notices = notices;
+  host.onNotices?.((list) => {
+    const n = brain.t.notices;
+    const me = (brain.custom?.userName || '').toLowerCase();
+    notices.recent = [...notices.recent, ...list].filter((x) => Date.now() - x.at < 6 * 3600000).slice(-80);
+    if (daily.focus) { notices.held.push(...list); return; }
+    if (presence.away) {
+      for (const x of list) presence.note(fmt(n.away, { app: x.app, title: x.title }));
+      return;
+    }
+    const urgent = list.find((x) => /urgent|urgência|emergên|socorro|liga pra mim|me liga|atende/i.test(`${x.title} ${x.body}`) || (me && `${x.title} ${x.body}`.toLowerCase().includes(me)));
+    if (!urgent) return; // Windows already shows them: she only speaks up for what looks urgent
+    capri.wake();
+    capri.perform('alarm', capri.towardCenter());
+    panel.say({ kind: 'alert', face: 'wide', line: fmt(n.urgent, { app: urgent.app, title: urgent.title }), quote: urgent.body.slice(0, 140), hold: 9000 });
+  });
+  // focus over: what came meanwhile, in a word
+  setInterval(() => {
+    if (daily.focus || !notices.held.length) return;
+    const n = brain.t.notices;
+    const by = {};
+    for (const x of notices.held) (by[x.app] ||= new Set()).add(x.title);
+    const parts = Object.entries(by).map(([app, who]) => fmt(n.part, { count: [...who].length, app, who: [...who].slice(0, 3).join(', ') }));
+    panel.say({ kind: 'info', face: 'look', line: fmt(n.duringFocus, { count: notices.held.length, list: parts.join('; ') }), hold: 12000 });
+    notices.held = [];
+  }, 20000);
+  // a streamer you follow went live (main lives.js)
+  host.onLive?.(({ name, site, url, title }) => whenFree(() => {
+    const l = brain.t.lives;
+    const line = fmt(l.live, { name, site: site === 'youtube' ? 'YouTube' : 'Twitch' });
+    if (presence.note(line)) return;
+    capri.wake();
+    capri.perform('hop', capri.towardCenter());
+    panel.say({ kind: 'info', face: 'laugh', line, quote: title ? title.slice(0, 120) : '', hold: 15000, actions: [{ id: 'watch', label: l.watch, primary: true }, { id: 'no', label: l.later }],
+      onAction: (id) => { panel.hide(); if (id === 'watch') host.openSite(url); } });
+  }));
+  // her offline voice: download progress, and ready
+  host.onVoiceProgress?.(({ done, size }) => panel.setTicker({ verb: 'WHISPER', target: `${Math.round((done / size) * 100)}% · ${Math.round(done / 1e6)} MB` }));
+  host.onVoiceReady?.((info) => panel.say({ kind: info.ok ? 'done' : 'error', face: info.ok ? 'laugh' : 'aside', line: info.ok ? brain.t.voice.ready : fmt(brain.t.voice.failed, { error: info.error || '…' }), hold: 6000 }));
+  // your Spotify (main spotify.js): what's playing and your top artists, into her memory
+  host.onSpotifyNow?.((n) => memory.song(n));
+  host.onSpotifyTop?.((list) => list.forEach((a, i) => memory.observe('music', a.name, a.name, { weight: Math.max(1, 20 - i), source: 'spotify' })));
+  host.onSpotifyConnected?.(() => { capri.wake(); capri.perform('hop', capri.towardCenter()); panel.say({ kind: 'done', face: 'laugh', line: brain.t.spotify.connected, hold: 6000 }); });
+  host.onSpotifyDisconnectAsk?.(() => guide.scene(async () => {
+    const s = brain.t.spotify;
+    if ((await guide.ask({ face: 'look', line: s.disconnectAsk, actions: [{ id: 'yes', label: s.disconnect, primary: true }, { id: 'no', label: s.keep }] })) === 'yes') host.spotifyDisconnect();
+  }));
+  // your PS5 (main psn.js): a game started or ended, your games' play time, the connection expired
+  host.onPsn?.(({ type, game, minutes }) => {
+    const p = brain.t.psn;
+    if (type === 'expired') return panel.say({ kind: 'info', face: 'aside', line: p.expired, hold: 8000 });
+    if (type === 'start') {
+      memory.observe('games', game, game, { weight: 1, source: 'ps5' });
+      if (presence.note(fmt(p.startedAway, { game }))) return undefined;
+      capri.wake();
+      capri.perform('curious', capri.towardCenter());
+      return panel.say({ kind: 'info', face: 'smug', line: fmt(pick(p.started), { game }), hold: 5000 });
+    }
+    if (type === 'stop' && minutes >= 10) {
+      const line = fmt(pick(p.stopped), { game, minutes: minutes >= 90 ? `${Math.round(minutes / 6) / 10} h` : `${minutes} min` });
+      if (!presence.note(line)) panel.say({ kind: 'idle', face: 'look', line, hold: 7000 });
+    }
+    return undefined;
+  });
+  host.onPsnGames?.((list) => { for (const g of list) memory.game(g.name, g.minutes); });
+  host.onPsnDisconnectAsk?.(() => guide.scene(async () => {
+    const p = brain.t.psn;
+    if ((await guide.ask({ face: 'look', line: p.disconnectAsk, actions: [{ id: 'yes', label: p.disconnect, primary: true }, { id: 'no', label: p.keep }] })) === 'yes') host.psnDisconnect();
+  }));
+  // her browser extension: a site you tried in focus mode (she teases), or opened anyway
+  host.onTabsEvent?.(({ type, site }) => {
+    const b = brain.t.tabs;
+    capri.wake();
+    capri.perform(type === 'blocked' ? 'glare' : 'huff', capri.towardCenter());
+    panel.say({ kind: 'info', face: type === 'blocked' ? 'smug' : 'aside', line: fmt(pick(type === 'blocked' ? b.blocked : b.letThrough), { site: site.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] }), hold: 4000 });
+  });
+  // your sites of yesterday (her extension), into her memory: once a day
+  const sitesDay = async () => {
+    const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (config.sitesDay === day) return;
+    const r = await host.tabsDo?.({ action: 'sites', query: day }).catch(() => null);
+    if (!r?.ok) return;
+    config.sitesDay = day;
+    host.setConfig({ sitesDay: day });
+    const work = /github|gitlab|stackoverflow|localhost|127\.0\.0\.1|docs\.|developer\.|learn\.microsoft|npmjs|claude\.ai|anthropic|openai|chatgpt|google\.com$|mail\.|outlook|teams|notion|figma|atlassian|jira|vercel|cloudflare/i;
+    for (const [site, secs] of Object.entries(r.sites || {})) if (secs >= 15 * 60 && !work.test(site)) memory.observe('freeTime', site, site, { weight: Math.round(secs / 60) });
+  };
+  setTimeout(() => sitesDay().catch(() => {}), 3 * 60000);
+  setInterval(() => sitesDay().catch(() => {}), 60 * 60000);
   // a reminder tied to an app you just brought up (main.js)
   host.onCtxRemind?.(({ app, text }) => {
     capri.wake();
@@ -764,7 +896,17 @@ async function boot() {
   camera.gestures = gestures;
   if (camera.Vision) gestures.load(camera.files, camera.Vision);
   Object.assign(chat, { gestures, art, camera, activity, presence, converse, mic, games: new Games({ brain, host, chat }) });
-  chat.onClosed = () => converse.onClose();
+  // what she knows about you (memory.js): from what she sees, and from your chats when they end
+  const memory = new Memory({ brain, host, chat });
+  memory.configure(config);
+  Object.assign(chat, { memory });
+  Object.assign(converse, { memory });
+  activity.memory = memory;
+  chat.onClosed = () => {
+    converse.onClose();
+    const session = chat.history.slice(chat.sessionFrom ?? chat.history.length);
+    if (!chat.visitor) setTimeout(() => memory.fromChat(session).catch(() => {}), 2000);
+  };
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
@@ -798,7 +940,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, watch, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, watch, memory, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -822,7 +964,11 @@ async function boot() {
     } else heart.nudge('taskFail');
   };
   guard.onThreat = () => emotions.fear('threat');
-  activity.onDiary = (day) => progress.learn(day);
+  activity.onDiary = (day) => {
+    memory.day(day?.apps);
+    progress.learn(day);
+  };
+  progress.memory = memory;
   pc.onFeel = (kind) => {
     if (kind === 'critical') emotions.fear('battery');
     else heart.nudge(kind);
@@ -969,6 +1115,7 @@ async function boot() {
     lockWatch.configure(cfg);
     converse.configure(cfg);
     gestures.configure(cfg);
+    memory.configure(cfg);
     if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;
@@ -1004,6 +1151,60 @@ async function boot() {
   });
 
   host.onCommand(async (cmd) => {
+    // her offline voice: download the model (with progress in her ticker), or turn it off
+    if (cmd.name === 'voiceLocal') {
+      const v = brain.t.voice;
+      if (!cmd.on) { await host.voiceLocal(false); panel.say({ kind: 'info', face: 'look', line: v.off, hold: 4000 }); return; }
+      panel.say({ kind: 'work', face: 'look', line: v.downloading, hold: 6000 });
+      const r = await host.voiceLocal(true).catch((err) => ({ ok: false, error: err.message }));
+      panel.setTicker(null);
+      panel.say({ kind: r.ok ? 'info' : 'error', face: r.ok ? 'look' : 'aside', line: r.ok ? v.loading : fmt(v.failed, { error: r.error || '…' }), hold: 7000 });
+      return;
+    }
+    // your Spotify: your app's Client ID, then your login in the browser
+    if (cmd.name === 'spotifySetup') {
+      const s = brain.t.spotify;
+      guide.scene(async () => {
+        capri.perform('curious', capri.towardCenter());
+        const r = await guide.askText({
+          face: 'look', line: s.ask, quote: s.how, placeholder: s.placeholder, send: s.connect,
+          actions: [{ id: 'dash', label: s.dashboard }],
+          onAction: () => { host.openSite('https://developer.spotify.com/dashboard'); return true; },
+        });
+        if (!r?.text) return;
+        const done = await host.spotifyLogin(r.text).catch(() => ({ ok: false }));
+        panel.say({ kind: 'info', face: done.ok ? 'look' : 'aside', line: done.ok ? s.browser : s.badFormat, hold: 7000 });
+      });
+      return;
+    }
+    // your PS5: the NPSSO, pasted in her panel (guided)
+    if (cmd.name === 'psnSetup') {
+      const p = brain.t.psn;
+      guide.scene(async () => {
+        capri.perform('curious', capri.towardCenter());
+        for (let tries = 0; tries < 3; tries++) {
+          const r = await guide.askText({
+            face: 'look', line: p.ask, quote: p.how, secret: true, placeholder: p.placeholder, send: p.connect,
+            actions: [{ id: 'login', label: p.login }, { id: 'code', label: p.code }],
+            onAction: (id) => { host.openSite(id === 'login' ? 'https://www.playstation.com/' : 'https://ca.account.sony.com/api/v1/ssocookie'); return true; },
+          });
+          if (!r?.text) return;
+          const done = await host.psnConnect(r.text).catch(() => ({ ok: false }));
+          if (done.ok) {
+            panel.say({ kind: 'done', face: 'laugh', line: p.connected, hold: 6000 });
+            return;
+          }
+          panel.say({ kind: 'info', face: 'aside', line: done.error === 'format' ? p.badFormat : p.failed, hold: 4000 });
+          await new Promise((res) => setTimeout(res, 2500));
+        }
+      });
+      return;
+    }
+    // her browser extension got new files: one click in the browser to load them
+    if (cmd.name === 'tabsUpdated') {
+      panel.say({ kind: 'info', face: 'look', line: brain.t.tabs.updated, hold: 9000 });
+      return;
+    }
     // her browser extension, copied out for you to load: how
     if (cmd.name === 'tabsGuide') {
       const b = brain.t.tabs;

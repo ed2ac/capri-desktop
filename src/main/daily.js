@@ -25,8 +25,20 @@ async function weather(city, lang = 'en') {
   const place = geo?.results?.[0];
   if (!place) return { error: 'unknown' };
   const f = await getJson(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}`
-    + '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1');
+    + '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunset&hourly=precipitation_probability,cloud_cover&timezone=auto&forecast_days=2');
+  const air = await getJson(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${place.latitude}&longitude=${place.longitude}&current=us_aqi`).catch(() => null);
+  // the sky ahead: rain coming in the next hours, the sunset, a clear night (for the stars)
+  const hours = (f.hourly?.time || []).map((t, i) => ({ t: Date.parse(t), rain: f.hourly.precipitation_probability?.[i] ?? 0, cloud: f.hourly.cloud_cover?.[i] ?? 100 }));
+  const now = Date.now();
+  const next = hours.filter((h) => h.t > now && h.t < now + 4 * 3600000);
+  const wet = next.find((h) => h.rain >= 60);
+  const night = hours.filter((h) => { const d = new Date(h.t); return h.t > now && h.t < now + 14 * 3600000 && (d.getHours() >= 20 || d.getHours() <= 2); });
   return {
+    rainIn: wet ? Math.max(1, Math.round((wet.t - now) / 3600000)) : null,
+    rainSoon: wet ? wet.rain : null,
+    sunset: f.daily?.sunset?.[0] ? Date.parse(f.daily.sunset[0]) : null,
+    clearNight: night.length ? night.reduce((s, h) => s + h.cloud, 0) / night.length < 30 : null,
+    aqi: air?.current?.us_aqi ?? null,
     city: place.name,
     temp: Math.round(f.current?.temperature_2m),
     code: f.current?.weather_code,

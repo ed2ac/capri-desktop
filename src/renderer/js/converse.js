@@ -174,7 +174,9 @@ export class Converse {
     const prompt = [
       'Start a little conversation with the user, out of nowhere, like a friend sitting next to them would: ONE short question.',
       `It is ${hour}h. ${this.heart ? `Your mood: ${this.heart.describe?.() || ''}.` : ''}`,
-      `About one of these, your pick: ${pick([
+      // half the time, something of theirs she remembers (memory.js)
+      ...((t) => (t && Math.random() < 0.5 ? [`About this, which you know about them: ${t.label} (${t.kind}). Ask how it's going, or something new about it.`] : []))(this.memory?.topic()),
+      `If not that, about one of these, your pick: ${pick([
         'their day so far', 'what they are craving to eat', 'a song stuck in your head', 'whether they can see the stars tonight',
         'a memory of Night City', 'a dream you had (you are a digital ghost, do you dream?)', 'what they would do with a day off',
         'something they want to learn', 'a silly would-you-rather', 'how they are feeling', 'their favourite game', 'a plan for the weekend',

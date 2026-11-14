@@ -21,12 +21,14 @@
     <nav class="tabs" role="tablist">
       <button class="btn primary" data-tab="art" role="tab" data-t="art">Desenhos</button>
       <button class="btn" data-tab="diary" role="tab" data-t="diary">Diário</button>
+      <button class="btn" data-tab="you" role="tab" data-t="you">Sobre você</button>
       <button class="btn" data-tab="wins" role="tab" data-t="wins">Conquistas</button>
     </nav>
   </header>
   <main class="pane">
     <section id="art" class="gallery"></section>
     <section id="diary" class="card" hidden><div class="frame"><div class="plate"><p class="label"><span class="who">CAPRI</span><span class="tag" data-t="diaryTag">DIÁRIO</span></p><ol class="entries" id="entries"></ol></div></div></section>
+    <section id="you" class="card" hidden><div class="frame"><div class="plate"><p class="label"><span class="who">CAPRI</span><span class="tag" data-t="youTag">MEMÓRIA</span></p><p class="empty-note" data-t="youNote"></p><div id="profile"></div><button class="btn danger" id="forget-all" data-t="forgetAll">Esquecer tudo</button></div></div></section>
     <section id="wins" class="card" hidden><div class="frame"><div class="plate"><p class="label"><span class="who">CAPRI</span><span class="tag" data-t="winsTag">CONQUISTAS</span></p><ul class="entries" id="achievements"></ul></div></div></section>
   </main>
   <script src="corner.js"></script>

@@ -8,3 +8,6 @@ Thumbs.db
 # local debug captures
 captures/
 tests/unit/.lines-raw.mjs
+
+# downloaded by scripts/fetch-vendor.js (pinned, checked by hash)
+src/vendor/transformers/

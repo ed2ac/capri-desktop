@@ -1104,6 +1104,36 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // streamers going live (main lives.js)
+    lives: { added: 'Deal: when {name} goes live on {site}, I’ll tell you.', addedLive: '{name} is live on {site} right now, by the way! I’ll tell you next time too.', removed: 'Okay, no more {name}.', notWatching: 'I wasn’t watching {name}.', failed: 'I couldn’t set that up. The name as it is on the channel?', live: '{name} just went live on {site}!', watch: 'Watch', later: 'Later' },
+    // the sky (main daily.js, Open-Meteo)
+    sky: { rainSoon: 'Rain coming in about {hours} h ({rain}%). Going out? Take an umbrella.', air: 'The air outside is bad today (AQI {aqi}). Maybe keep the window shut.', stars: 'Clear sky tonight… you can see the stars. Go take a look for me?', sunset: 'Sunset, right now. Go look out the window a second.' },
+    // her offline voice (src/whisper)
+    voice: { downloading: 'Downloading my offline ears (Whisper, about 250 MB). Just once.', loading: 'Got it. Warming up my ears…', ready: 'Offline voice ready: from now on your voice doesn’t leave this PC.', off: 'Back to Groq for your voice.', failed: 'My offline voice didn’t work: {error}' },
+    // your Windows notifications (main notices.js)
+    notices: { away: '{app}: “{title}”.', urgent: 'This looks urgent, on {app}: “{title}”.', duringFocus: '{count} notification(s) came while you focused: {list}.', part: '{count} on {app} ({who})', none: 'Nothing new in the last few hours (or my “Read my notifications” is off).', summary: '{count} notification(s) in the last hours: {list}.' },
+    // your Spotify (main spotify.js)
+    spotify: {
+      ask: 'Let’s connect your Spotify. Paste your app’s Client ID:', placeholder: 'Client ID (32 characters)', connect: 'Connect', dashboard: 'Open Spotify for Developers',
+      how: '1. In Spotify for Developers (button), Create app: any name and description.\n2. Redirect URI: http://127.0.0.1:47823/spotify/callback\n3. Tick “Web API”, save, and copy the Client ID here.\nThen you log in in your browser.',
+      browser: 'Now log in to Spotify in your browser and allow it. I’ll know when it’s done.', badFormat: 'That doesn’t look like a Client ID (32 letters and numbers).',
+      connected: 'Spotify connected! Now I know what you listen to, and I can play songs for you.',
+      playing: 'Playing “{title}”, {artist}.', notFound: 'I couldn’t find “{song}” on Spotify.', premium: '(Playing it straight away needs Spotify Premium.)',
+      needed: 'For playlists I need your Spotify connected (my menu › Connect my Spotify).', failed: 'I couldn’t put the playlist together this time. Again?', made: 'Made you “{name}”: {count} songs, in your Spotify.',
+      disconnectAsk: 'Disconnect your Spotify from me?', disconnect: 'Disconnect', keep: 'Keep it',
+    },
+    // your PS5 (main psn.js)
+    psn: {
+      ask: 'Let’s connect your PS5. Paste your NPSSO code here:', placeholder: 'NPSSO (64 characters)', connect: 'Connect', login: '1. Log in to PlayStation', code: '2. Get the code',
+      how: '1. Log in at playstation.com (button 1) in your browser.\n2. Then open button 2: it shows {"npsso":"…"}. Copy just the code between the quotes and paste it here.\nIt stays encrypted on this PC. It works for about 2 months.',
+      connected: 'PS5 connected! Now I’ll know what you’re playing.', badFormat: 'That doesn’t look like an NPSSO (64 letters and numbers). Try again?', failed: 'PlayStation didn’t accept it. Log in again and get a fresh code?',
+      expired: 'My PS5 link expired (they last about 2 months). Connect it again from my menu when you can.',
+      started: ['Off to the PS5 for some {game}? Have fun!', '{game} on the PS5, huh? Don’t forget about me.'], startedAway: 'You played {game} on the PS5.',
+      stopped: ['{minutes} of {game}. So, how did it go?', 'Back from {game} ({minutes})? Tell me everything.'],
+      disconnectAsk: 'Disconnect your PS5 from me?', disconnect: 'Disconnect', keep: 'Keep it',
+    },
+    // Claude Code talking through her (MCP)
+    mcp: { asks: '{project} is asking you:', badge: 'CLAUDE', placeholder: 'Your answer…', send: 'Send', away: '{project} said: “{text}”' },
     // games in her chat (games.js)
     games: {
       hangmanStart: 'Hangman! {n} letters: {board}\nA letter or the whole word. Six mistakes and you’re out.', hangmanHit: 'Yes! {board}', hangmanMiss: 'Nope. {board}  ({left} left)',
@@ -1119,10 +1149,10 @@ export const LINES = {
       closeAsk: 'Found {count} tab(s) with “{q}”. Close them?', closeIt: 'Close {count}', closed: 'Closed {count}. Lighter already.',
       saved: 'Put {count} tabs away for later. Ask me to bring them back when you want.', restored: 'Brought back {count} tabs, in a window of their own.',
       went: 'There: “{title}”.', noText: 'I can’t read this page (it has almost no text, or it’s the browser’s own).',
-      guide: 'My extension is in that folder. To load it in your browser (Chrome, Opera, Edge, Brave):', guideSteps: '1. Open the extensions page (chrome://extensions, opera://extensions…)\n2. Turn on Developer mode\n3. Load unpacked → pick {dir}', ok: 'Got it',
+      guide: 'My extension is in that folder. To load it in your browser (Chrome, Opera, Edge, Brave):', updated: 'My browser extension got new tricks: hit reload on it in your browser’s extensions page (or restart the browser).', blocked: ['Nope. {site} is off limits while you focus.', 'Caught you! {site} can wait.'], letThrough: ['Fine, {site}. Just a peek, okay?', 'Opening {site} anyway? I saw that.'], guideSteps: '1. Open the extensions page (chrome://extensions, opera://extensions…)\n2. Turn on Developer mode\n3. Load unpacked → pick {dir}', ok: 'Got it',
     },
     // watching together (watch.js), your week (chat.js)
-    watch: { after: ['So? What did you think of it?', 'That was a long one. Worth it?', 'Okay, verdict: good or a waste of time?'] },
+    watch: { afterTitle: ['So, “{title}”: what did you think?', '“{title}”… worth it?'], after: ['So? What did you think of it?', 'That was a long one. Worth it?', 'Okay, verdict: good or a waste of time?'] },
     week: { none: 'I don’t have your week yet: turn on “Comment on what I do” and I’ll keep track.', failed: 'My local AI didn’t answer just now. Ask me again in a bit?', corner: 'My little corner! Don’t laugh at the drawings.' },
     // your GitHub (main github.js)
     github: { ciFailed: 'The CI on {repo} broke: “{title}”.', review: 'Someone wants your review on {repo}: “{title}”.', mention: 'You got mentioned on {repo}: “{title}”.', assign: 'Something on {repo} was assigned to you: “{title}”.', security: 'Security alert on {repo}: “{title}”.', fix: 'Put Claude on it', later: 'Not now', ciMany: '{count} runs failed ({repos})' },
@@ -2343,6 +2373,36 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // lives (main lives.js)
+    lives: { added: 'Combinado: quando o {name} entrar ao vivo na {site}, eu te aviso.', addedLive: 'Aliás, o {name} tá ao vivo na {site} agora! E nas próximas eu aviso.', removed: 'Beleza, não aviso mais do {name}.', notWatching: 'Eu nem tava de olho no {name}.', failed: 'Não consegui. Me fala o nome do jeito que tá no canal?', live: 'O {name} entrou ao vivo na {site}!', watch: 'Assistir', later: 'Depois' },
+    // o céu (main daily.js, Open-Meteo)
+    sky: { rainSoon: 'Vai chover daqui a umas {hours} h ({rain}%). Se for sair, leva guarda-chuva.', air: 'O ar lá fora tá ruim hoje (IQA {aqi}). Melhor deixar a janela fechada.', stars: 'Céu limpinho hoje… dá pra ver as estrelas. Vai lá olhar por mim?', sunset: 'Pôr do sol agora. Dá uma olhada pela janela, rapidinho.' },
+    // a voz offline dela (src/whisper)
+    voice: { downloading: 'Baixando meus ouvidos offline (Whisper, uns 250 MB). É uma vez só.', loading: 'Baixei. Aquecendo os ouvidos…', ready: 'Voz offline pronta: daqui pra frente sua voz não sai deste PC.', off: 'Voltei a usar a Groq pra sua voz.', failed: 'Minha voz offline não funcionou: {error}' },
+    // suas notificações do Windows (main notices.js)
+    notices: { away: '{app}: “{title}”.', urgent: 'Isso parece urgente, no {app}: “{title}”.', duringFocus: 'Chegaram {count} notificação(ões) enquanto você focava: {list}.', part: '{count} no {app} ({who})', none: 'Nada de novo nas últimas horas (ou o “Ler minhas notificações” tá desligado).', summary: '{count} notificação(ões) nas últimas horas: {list}.' },
+    // seu Spotify (main spotify.js)
+    spotify: {
+      ask: 'Bora ligar seu Spotify. Cola aqui o Client ID do seu app:', placeholder: 'Client ID (32 caracteres)', connect: 'Ligar', dashboard: 'Abrir o Spotify for Developers',
+      how: '1. No Spotify for Developers (botão), Create app: qualquer nome e descrição.\n2. Redirect URI: http://127.0.0.1:47823/spotify/callback\n3. Marque “Web API”, salve e copie o Client ID pra cá.\nDepois você entra na sua conta pelo navegador.',
+      browser: 'Agora entra no Spotify pelo navegador e autoriza. Eu fico sabendo quando terminar.', badFormat: 'Isso não parece um Client ID (32 letras e números).',
+      connected: 'Spotify ligado! Agora eu sei o que você ouve, e posso tocar música pra você.',
+      playing: 'Tocando “{title}”, {artist}.', notFound: 'Não achei “{song}” no Spotify.', premium: '(Tocar direto precisa do Spotify Premium.)',
+      needed: 'Pra playlist eu preciso do seu Spotify ligado (meu menu › Ligar meu Spotify).', failed: 'Não consegui montar a playlist dessa vez. De novo?', made: 'Fiz “{name}” pra você: {count} músicas, no seu Spotify.',
+      disconnectAsk: 'Desligar seu Spotify de mim?', disconnect: 'Desligar', keep: 'Manter',
+    },
+    // seu PS5 (main psn.js)
+    psn: {
+      ask: 'Bora ligar seu PS5. Cola aqui seu código NPSSO:', placeholder: 'NPSSO (64 caracteres)', connect: 'Ligar', login: '1. Entrar na PlayStation', code: '2. Pegar o código',
+      how: '1. Entre em playstation.com (botão 1) no seu navegador.\n2. Depois abra o botão 2: aparece {"npsso":"…"}. Copie só o código entre as aspas e cole aqui.\nFica criptografado neste PC. Vale por uns 2 meses.',
+      connected: 'PS5 ligado! Agora eu fico sabendo o que você joga.', badFormat: 'Isso não parece um NPSSO (64 letras e números). Tenta de novo?', failed: 'A PlayStation não aceitou. Entra de novo e pega um código novo?',
+      expired: 'A ligação com seu PS5 expirou (dura uns 2 meses). Liga de novo pelo meu menu quando puder.',
+      started: ['Foi pro PS5 jogar {game}? Bom jogo!', '{game} no PS5, é? Não esquece de mim.'], startedAway: 'Você foi jogar {game} no PS5.',
+      stopped: ['{minutes} de {game}. E aí, como foi?', 'Voltou do {game} ({minutes})? Me conta tudo.'],
+      disconnectAsk: 'Desligar seu PS5 de mim?', disconnect: 'Desligar', keep: 'Manter',
+    },
+    // o Claude Code falando por ela (MCP)
+    mcp: { asks: 'O {project} quer saber:', badge: 'CLAUDE', placeholder: 'Sua resposta…', send: 'Enviar', away: 'O {project} disse: “{text}”' },
     // jogos no chat dela (games.js)
     games: {
       hangmanStart: 'Forca! {n} letras: {board}\nUma letra ou a palavra inteira. Seis erros e já era.', hangmanHit: 'Isso! {board}', hangmanMiss: 'Não tem. {board}  (faltam {left})',
@@ -2358,10 +2418,10 @@ export const LINES = {
       closeAsk: 'Achei {count} aba(s) com “{q}”. Fecho?', closeIt: 'Fechar {count}', closed: 'Fechei {count}. Já ficou mais leve.',
       saved: 'Guardei {count} abas pra depois. Quando quiser, me pede que eu trago de volta.', restored: 'Trouxe {count} abas de volta, numa janela só delas.',
       went: 'Pronto: “{title}”.', noText: 'Não consigo ler essa página (tem quase nada de texto, ou é do próprio navegador).',
-      guide: 'Minha extensão tá nessa pasta. Pra carregar no seu navegador (Chrome, Opera, Edge, Brave):', guideSteps: '1. Abra a página de extensões (chrome://extensions, opera://extensions…)\n2. Ligue o Modo de desenvolvedor\n3. Carregar sem compactação → escolha {dir}', ok: 'Entendi',
+      guide: 'Minha extensão tá nessa pasta. Pra carregar no seu navegador (Chrome, Opera, Edge, Brave):', updated: 'Minha extensão do navegador ganhou novidades: clica em recarregar nela na página de extensões (ou reinicia o navegador).', blocked: ['Nada disso. O {site} tá bloqueado enquanto você foca.', 'Te peguei! O {site} pode esperar.'], letThrough: ['Tá bom, {site}. Só uma espiadinha, hein?', 'Abrindo o {site} mesmo assim? Eu vi, hein.'], guideSteps: '1. Abra a página de extensões (chrome://extensions, opera://extensions…)\n2. Ligue o Modo de desenvolvedor\n3. Carregar sem compactação → escolha {dir}', ok: 'Entendi',
     },
     // assistindo junto (watch.js), sua semana (chat.js)
-    watch: { after: ['E aí? O que achou?', 'Foi longo, hein. Valeu a pena?', 'Tá, veredito: bom ou perda de tempo?'] },
+    watch: { afterTitle: ['E aí, “{title}”: o que achou?', '“{title}”… valeu a pena?'], after: ['E aí? O que achou?', 'Foi longo, hein. Valeu a pena?', 'Tá, veredito: bom ou perda de tempo?'] },
     week: { none: 'Ainda não tenho sua semana: liga o “Comentar o que eu faço” que eu vou anotando.', failed: 'Minha IA local não respondeu agora. Me pergunta de novo daqui a pouco?', corner: 'Meu cantinho! Não ri dos desenhos.' },
     // seu GitHub (main github.js)
     github: { ciFailed: 'O CI do {repo} quebrou: “{title}”.', review: 'Te pediram revisão no {repo}: “{title}”.', mention: 'Te mencionaram no {repo}: “{title}”.', assign: 'Te atribuíram algo no {repo}: “{title}”.', security: 'Alerta de segurança no {repo}: “{title}”.', fix: 'Mandar o Claude', later: 'Agora não', ciMany: '{count} execuções falharam ({repos})' },
@@ -3043,7 +3103,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

@@ -56,6 +56,16 @@ const TABS = [
 // "vou dormir", "boa noite, capri": she says goodnight and goes to sleep too (presence.js)
 const NIGHT_ASK = /^(?:capri,?\s+)?(?:vou\s+dormir|t[ôo]\s+indo\s+dormir|indo\s+dormir|boa\s+noite(?:,?\s+capri)?|fui\s+dormir|hora\s+de\s+dormir|good\s*night|going\s+to\s+(?:bed|sleep))[\s!.,]*(?:capri)?[\s!.]*$/i;
 
+// "cria uma playlist pra estudar": songs she picks for your taste, made into a Spotify playlist
+const PLAYLIST_ASK = /(?:cri[ae]|fa[zç]a?|mont[ae]|gera|gere)\w*\s+(?:uma\s+|umas\s+)?playlists?(?:\s+(?:pra|para|de|com|sobre|no)\s+(.+))?|make\s+(?:me\s+)?a\s+playlist(?:\s+(?:for|of|with)\s+(.+))?/i;
+
+// "o que chegou de notificação?": the last few hours' notifications, in a word (with reading them on)
+const NOTICES_ASK = /(?:o\s+que|quais|alguma?)\s+(?:chegou|chegaram|tem|teve)\s+(?:de\s+)?notifica[çc][ãa]o|notifica[çc][õo]es\s+(?:novas|recentes)|any\s+(?:new\s+)?notifications|what\s+notifications/i;
+
+// "me avisa quando o Gaules entrar ao vivo (na twitch)", "para de me avisar do X" (main lives.js)
+const LIVE_ADD = /(?:me\s+)?avis[ae]\w*\s+quando\s+(?:o\s+|a\s+)?@?([\w.-]{2,40})\s+(?:entrar|ficar|estiver|for)\s+(?:ao\s+vivo|online|em\s+live)(?:\s+n[oa]\s+(twitch|youtube))?|tell\s+me\s+when\s+@?([\w.-]{2,40})\s+goes\s+live(?:\s+on\s+(twitch|youtube))?/i;
+const LIVE_DEL = /(?:para|pare)\s+de\s+me\s+avisar\s+(?:d[oae]s?\s+)?@?([\w.-]{2,40})|stop\s+telling\s+me\s+about\s+@?([\w.-]{2,40})/i;
+
 // her corner: "mostra seus desenhos", "abre seu diário"
 const CORNER_ASK = /(?:mostr|abr|v[êe]r|quero\s+ver)\w*\s+(?:os\s+)?(?:seus|teus)\s+(?:desenhos|di[áa]rio|conquistas)|(?:show|open)\s+(?:me\s+)?your\s+(?:drawings|diary|achievements)/i;
 
@@ -396,6 +406,7 @@ export class Chat {
       return;
     }
     this.open = true;
+    this.sessionFrom = this.history.length; // what's said from here: for her memory when it closes
     this.watchIdle();
     this.idle();
     setTimeout(() => this.panel.chatInput.focus(), 150); // once the overlay has the keyboard
@@ -542,7 +553,10 @@ export class Chat {
     if (!this.agent) {
       const mood = this.bond?.moodLine().replace(/^Right now: /, '');
       const last = messages.at(-1);
-      messages[messages.length - 1] = { ...last, content: `${last.content}\n\n(Note for you, never repeat it: ${[mood, this.languageNote()].filter(Boolean).join(' ')})` };
+      // what she knows that relates to this message: right by it, where a small model reads it
+      const related = this.visitor ? [] : (this.memory?.relevant(text) || []);
+      const recall = related.length ? `You remember, related to this: ${related.join('; ')}.` : '';
+      messages[messages.length - 1] = { ...last, content: `${last.content}\n\n(Note for you, never repeat it: ${[mood, recall, this.languageNote()].filter(Boolean).join(' ')})` };
     }
     // nothing yet after a few seconds: Ollama is still loading the model (the first answer after a start),
     // or Claude Code is at work
@@ -708,6 +722,13 @@ export class Chat {
     if (this.gestures && RPS_ASK.test(text)) return { kind: 'rps' };
     if (this.activity && WEEK_ASK.test(text)) return { kind: 'week' };
     if (CORNER_ASK.test(text)) return { kind: 'corner' };
+    const liveAdd = LIVE_ADD.exec(text);
+    if (liveAdd) return { kind: 'live', op: 'add', name: liveAdd[1] || liveAdd[3], site: (liveAdd[2] || liveAdd[4] || 'twitch').toLowerCase() };
+    const liveDel = LIVE_DEL.exec(text);
+    if (liveDel) return { kind: 'live', op: 'remove', name: liveDel[1] || liveDel[2] };
+    if (this.notices && NOTICES_ASK.test(text)) return { kind: 'notices' };
+    const pl = PLAYLIST_ASK.exec(text);
+    if (pl) return { kind: 'playlist', about: (pl[1] || pl[2] || '').replace(/[.!?]+$/, '').trim() };
     if (this.presence && NIGHT_ASK.test(text.trim())) return { kind: 'night' };
     for (const [action, re] of TABS) {
       const m = re.exec(text);
@@ -936,6 +957,22 @@ export class Chat {
     if (asked.kind === 'arrange') return this.arrange(asked);
     if (asked.kind === 'week') return this.week();
     if (asked.kind === 'tabs') return this.tabs(asked);
+    if (asked.kind === 'live') {
+      const l = this.brain.t.lives;
+      const r = await this.host.livesSet?.({ op: asked.op, site: asked.site, name: asked.name }).catch(() => null);
+      if (!r?.ok) return { line: asked.op === 'remove' ? fmt(l.notWatching, { name: asked.name }) : l.failed, face: 'aside' };
+      if (asked.op === 'remove') return { line: fmt(l.removed, { name: r.name }), face: 'look' };
+      return { line: fmt(r.live ? l.addedLive : l.added, { name: r.name, site: r.site === 'youtube' ? 'YouTube' : 'Twitch' }), face: 'smug' };
+    }
+    if (asked.kind === 'notices') {
+      const n = this.brain.t.notices;
+      const list = this.notices.recent.filter((x) => Date.now() - x.at < 3 * 3600000);
+      if (!list.length) return { line: n.none, face: 'look' };
+      const by = {};
+      for (const x of list) (by[x.app] ||= []).push(x.title);
+      return { line: fmt(n.summary, { count: list.length, list: Object.entries(by).map(([app, t2]) => fmt(n.part, { count: t2.length, app, who: [...new Set(t2)].slice(0, 3).join(', ') })).join('; ') }), face: 'look' };
+    }
+    if (asked.kind === 'playlist') return this.playlist(asked.about);
     if (asked.kind === 'night') {
       // a little while to read her goodnight, then the chat closes and she sleeps (camera resting)
       setTimeout(() => {
@@ -982,10 +1019,7 @@ export class Chat {
       this.capri.pulse();
       return (await this.host.media(asked.action)) ? { line: t.media[asked.action], face: 'smug' } : null;
     }
-    if (asked.kind === 'music') {
-      this.zap();
-      return (await this.host.music(asked.song)) ? { line: fmt(t.music, { song: asked.song }), face: 'laugh' } : null;
-    }
+    if (asked.kind === 'music') return this.spotify(asked.song);
     if (asked.kind === 'youtube') return this.youtube(asked.song);
     if (asked.kind === 'roblox') {
       this.zap();
@@ -1022,10 +1056,7 @@ export class Chat {
     }
     if (asked.kind === 'play') {
       // "abra o spotify e coloque X": a Spotify search for it (it opens the app too)
-      if (/spotify/i.test(`${asked.before || ''} ${asked.text || ''}`)) {
-        this.zap();
-        return (await this.host.music(asked.song)) ? { line: fmt(t.music, { song: asked.song }), face: 'laugh' } : null;
-      }
+      if (/spotify/i.test(`${asked.before || ''} ${asked.text || ''}`)) return this.spotify(asked.song);
       // what came before an "and" first ("ouvre discord et…"), unless it's YouTube, where the song goes anyway
       const first = asked.before && OPEN_ASK.test(asked.before) && !/youtube/i.test(asked.before)
         ? await this.doNow({ kind: 'open', text: asked.before }) : null;
@@ -1162,6 +1193,26 @@ export class Chat {
     return { line: clean(res.text), face: 'smug' };
   }
 
+  // a playlist for you: her local AI picks songs from what she knows you like, Spotify makes it
+  async playlist(about) {
+    const s = this.brain.t.spotify;
+    if (!(await this.host.spotifyOn?.().catch(() => false))) return { line: s.needed, face: 'aside' };
+    const likes = this.memory ? this.memory.ranked('music').slice(0, 12).map((i) => i.label) : [];
+    const prompt = [
+      `Pick 15 real, existing songs for a playlist${about ? ` for: ${about}` : ''}. ${likes.length ? `The user listens to: ${likes.join(', ')}. Mix some of those artists with similar ones they'd like.` : ''}`,
+      'Answer ONLY with JSON: {"name": "a short fun playlist name", "songs": ["Artist - Title", ...]}',
+    ].join('\n');
+    const res = await this.host.localSay({ persona: 'You know a lot of music. JSON only.', prompt, maxTokens: 500, temperature: 0.8 }).catch(() => null);
+    const m = res?.ok && /\{[\s\S]*\}/.exec(res.text);
+    let pick2 = null;
+    try { pick2 = m && JSON.parse(m[0]); } catch { /* no */ }
+    if (!pick2?.songs?.length) return { line: s.failed, face: 'aside' };
+    const made = await this.host.spotifyPlaylist({ name: pick2.name || 'Capri', songs: pick2.songs }).catch(() => null);
+    if (!made?.ok) return { line: s.failed, face: 'aside' };
+    if (made.uri) this.host.openSite?.(made.url);
+    return { line: fmt(s.made, { name: pick2.name || 'Capri', count: made.count }), face: 'laugh' };
+  }
+
   // your tabs (her browser extension)
   async tabs({ action, query }) {
     const b = this.brain.t.tabs;
@@ -1278,9 +1329,31 @@ export class Chat {
 
   // A Spotify search, in the app if it's there.
   async music(song, answer) {
+    const r = await this.spotify(song);
+    if (r) this.addLine(answer, r.line, r.face);
+  }
+
+  // a song on Spotify: played right away with your Spotify connected (Premium), else its search
+  async spotify(song) {
+    const { t } = this;
+    const s = this.brain.t.spotify;
     this.zap();
-    const ok = await this.host.music(song);
-    if (ok) this.addLine(answer, fmt(this.t.music, { song }), 'laugh');
+    if (await this.host.spotifyOn?.().catch(() => false)) {
+      let r = await this.host.spotifyPlay(song).catch(() => null);
+      if (r?.error === 'device') {
+        // Spotify isn't open anywhere: open it, then once more
+        await this.host.music(song);
+        await new Promise((res) => setTimeout(res, 4000));
+        r = await this.host.spotifyPlay(song).catch(() => null);
+      }
+      if (r?.ok) return { line: fmt(s.playing, { title: r.title, artist: r.artist }), face: 'laugh' };
+      if (r?.error === 'notfound') return { line: fmt(s.notFound, { song }), face: 'aside' };
+      if (r?.error === 'premium') {
+        await this.host.music(song);
+        return { line: `${fmt(t.music, { song })} ${s.premium}`, face: 'look' };
+      }
+    }
+    return (await this.host.music(song)) ? { line: fmt(t.music, { song }), face: 'laugh' } : null;
   }
 
   // A website: always behind a button that shows where it goes.
@@ -1458,7 +1531,8 @@ export class Chat {
     return [
       userName ? `The user's name is ${userName}: call them that now and then.${notThem}` : notThem && `You don't know the user's name.${notThem}`,
       persona ? `How the user wants you to be, in their own words (follow it, while staying Capri): ${persona}` : '',
-      memories.length ? `Things the user asked you to remember:\n${memories.map((m) => `- ${m}`).join('\n')}` : '',
+      // what she knows about them (memory.js), or, before it, what they asked her to remember
+      this.memory ? this.memory.persona() : (memories.length ? `Things the user asked you to remember:\n${memories.map((m) => `- ${m}`).join('\n')}` : ''),
       // her diary of the last days (activity.js): what she remembers of their life
       this.diary?.length ? `Your diary of the last days with the user (what you remember; bring it up only when it fits):\n${this.diary.map((d) => `- ${d.date}: ${d.text}`).join('\n')}` : '',
       // what they're up to right now, if she follows it (activity.js)
@@ -1490,6 +1564,7 @@ export class Chat {
       'Rules: one or two short sentences of plain text, no markdown, no lists, no emoji, no tags. Stay in character. Talk to the user, never describe the picture like a report.',
       'Ask the user a question only now and then (one line in four at most); mostly just comment, tease or react.',
       'Never read out anything private you might see (passwords, bank details, private messages, addresses): if there is some, just tease them about being busy.',
+      ...(this.memory && !this.visitor ? this.memory.summary(5).map((l) => `What you know about them — ${l}. (Only when it fits.)`) : []),
       ...this.personal(),
       ...(this.bond ? [this.bond.persona()] : []),
       ...[this.heart?.persona(), this.bond?.moodLine()].filter(Boolean),

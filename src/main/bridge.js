@@ -37,13 +37,21 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onGate, onDebug, onTabs }) {
+function createBridge({ port, onEvent, onGate, onDebug, onTabs, onMcp, onSpotify }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
     if (req.headers.origin) return send(res, 403, { ok: false });
 
     const url = new URL(req.url, 'http://127.0.0.1');
+
+    // back from logging in to Spotify in your browser (spotify.js): a page saying it worked
+    if (req.method === 'GET' && url.pathname === '/spotify/callback' && onSpotify) {
+      const r = await onSpotify(Object.fromEntries(url.searchParams)).catch(() => ({ ok: false }));
+      const html = `<!doctype html><meta charset="utf-8"><title>Capri</title><body style="background:#14101c;color:#f1eaf8;font:600 20px system-ui;display:grid;place-items:center;height:100vh;margin:0"><p>${r.ok ? 'Spotify ligado! Pode fechar esta aba e voltar pra Capri.' : 'Não deu certo. Tenta de novo pelo menu da Capri.'}</p></body>`;
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(html) });
+      return res.end(html);
+    }
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return send(res, 200, { ok: true, name: 'capri', pid: process.pid });
@@ -70,6 +78,16 @@ function createBridge({ port, onEvent, onGate, onDebug, onTabs }) {
         return send(res, 200, { allow: Boolean(decision?.allow), reason: decision?.reason || '' });
       } catch (err) {
         return send(res, 200, { allow: false, reason: err.message });
+      }
+    }
+
+    // Claude Code talking through her (hooks/capri-mcp.js): a line, a question held until you answer…
+    if (req.method === 'POST' && url.pathname === '/mcp' && onMcp) {
+      try {
+        const body = await readJson(req);
+        return send(res, 200, (await onMcp(body)) || { ok: false });
+      } catch (err) {
+        return send(res, 200, { ok: false, error: err.message });
       }
     }
 

@@ -75,6 +75,7 @@ export class Progress {
 
   // a game just ended (pc.js, through app.js): she asks how it went, once she's back
   gameOver(name, ms) {
+    if (name && ms > 60000) this.memory?.game(name, ms / 60000); // what you play, for her memory
     if (!name || ms < 5 * 60000) return;
     this.queue.push({ kind: 'game', name, ms });
   }
@@ -179,7 +180,9 @@ export class Progress {
     const res = await this.host.localSay({ persona: 'You note down facts about a person, briefly and accurately.', prompt, maxTokens: 60, temperature: 0.3 }).catch(() => null);
     const fact = res?.ok ? clean(res.text).replace(/^["“«-]\s*|\s*["”»]$/g, '').replace(/^(?:the user|o usuário|usuário)\s+/i, '').trim() : '';
     if (!fact || /^none\b/i.test(fact) || !inLang(fact, this.brain.lang) || fact.length > 120 || known.some((k) => k.toLowerCase() === fact.toLowerCase())) return;
-    this.queue.push({ kind: 'learn', fact });
+    // into her memory (memory.js), quietly: you see and edit it in her corner
+    if (this.memory) this.memory.observe('fact', fact, fact, { weight: 2, source: 'diary' });
+    else this.queue.push({ kind: 'learn', fact });
   }
 
   async askLearn({ fact }) {
