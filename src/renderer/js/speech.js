@@ -7,7 +7,7 @@
 // The stock is kept on this PC (localStorage), and lines older than a few days are dropped: she
 // grows, her mood and how close you are change, and so does what she'd say.
 
-import { pick, fmt, inLang } from './util.js';
+import { pick, fmt, inLang, tidy } from './util.js';
 
 const STOCK = 6;               // lines kept ready per moment
 const LOW = 2;                 // fewer than that: make more
@@ -236,8 +236,8 @@ export class Speech {
       `The moment: ${moment}.`,
       'Lines you have said at this moment before (your voice, your slang):',
       ...written.map((l) => `- ${l}`),
-      `Write ${STOCK} new lines for this same moment, each one different in tone: teasing, proud, sleepy, chaotic, sweet, deadpan, dramatic, smug. Surprise the user, don't reuse the examples.`,
-      'Rules: one line each, at most 18 words, plain text, no quotes, no numbering, no emoji, no markdown.',
+      `Write ${STOCK} new lines for this same moment, each in a different mood (teasing one, proud the next, then sleepy, chaotic, sweet, deadpan…). Surprise the user, don't reuse the examples.`,
+      'Rules: one line each, at most 18 words, plain text, no quotes, no numbering, no emoji, no markdown. Never write the mood itself (no "(sleepy)" or labels): just the line, as she says it.',
       allowed.size
         ? `Keep these placeholders exactly as written (curly braces included), they get filled in later: ${[...allowed].join(' ')}.${needed.length ? ` Every line must contain ${needed.join(' and ')}.` : ''}`
         : 'Use no curly braces.',
@@ -252,7 +252,7 @@ export class Speech {
     const seen = new Set([...written, ...have.map((l) => l.text)].map((l) => l.toLowerCase()));
     const fresh = String(res.text)
       .split('\n')
-      .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^["“«]\s*|\s*["”»]$/g, '').trim())
+      .map((l) => tidy(l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')))
       .filter((l) => l.length >= 3 && l.length <= 170 && !/[*#`]/.test(l))
       .filter((l) => [...placeholders(l)].every((p) => allowed.has(p)) && needed.every((p) => l.includes(p)))
       .filter((l) => !seen.has(l.toLowerCase()) && seen.add(l.toLowerCase()))

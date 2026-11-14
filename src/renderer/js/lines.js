@@ -1102,6 +1102,22 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // your hands and head (gestures.js)
+    gesture: {
+      wave: ['Hi! Hi! I see you!', 'Hey you! 👋', 'Waving at me? Cute.'], thumbsUp: ['Preem. I know.', 'Thanks, choom.', 'Yeah, I’m great, aren’t I?'],
+      thumbsDown: ['Rude.', 'Hmph. Fine.', 'Tough crowd.'], peace: ['Peace, choom.', 'Peace and neon.'], love: ['Aww… right back at you.', 'You’re gonna make me glitch.'],
+      fist: ['Bump!', 'Boom. Respect.'], stop: ['Okay, okay, stopping.', 'Freezing right here.'], shh: ['Shh… quiet mode.'],
+      phone: ['Phone again? I’m right here, you know.', 'That phone more interesting than me? Ouch.'], phoneFocus: ['Focus mode, choom. Put the phone down.', 'Hey. Phone. Down. You’re focusing.'],
+      rpsStart: ['Rock, paper, scissors! Show your hand to the camera when I say go.', 'Best of three. Hand in front of the camera!'],
+      rpsCount: ['Rock…', 'Paper…', 'Scissors…'], rpsGo: 'GO!', rpsNoHand: ['I didn’t see your hand! Again.', 'Hand in front of the camera, cheater!'],
+      rps_win: ['{me} beats {you}. Mine!', 'Ha! {me} over {you}.'], rps_lose: ['{you} beats {me}… lucky.', 'Okay, {you} wins. This time.'], rps_draw: ['{you} and {you}. Again!', 'Same! Great minds.'],
+      rpsNames: { rock: 'rock', paper: 'paper', scissors: 'scissors' }, rpsYouWon: 'You won {you} to {me}. I demand a rematch.', rpsIWon: 'I won {me} to {you}. Obviously.', rpsTie: 'Tied {you} to {me}. Next time I crush you.',
+      rpsNoCam: 'I need the camera for that (Camera and sounds › Use my camera).',
+      portraitStart: ['Stay still… let me draw you.', 'Hold that face. Artist at work.'], portraitDone: ['There. That’s you. Kept it in my drawings.', 'Masterpiece. Saved it, obviously.'],
+      portraitNoFace: 'I can’t see your face right now. Look at the camera and ask me again.',
+    },
+    // talking with her (converse.js)
+    converse: { shrug: ['…okay, I’ll talk to myself then.', 'Nothing? Fine. I’ll pretend you said yes.', 'Hm. Busy. I get it.', 'Shy today, huh?'] },
     // the PC locked (lockwatch.js)
     lock: {
       hi: 'Hi, {name}! 👋 I saw you.', guest: 'Hi, {who}! 👋', stranger: 'I don’t know you… I’m keeping an eye on this PC.',
@@ -2298,6 +2314,22 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // suas mãos e sua cabeça (gestures.js)
+    gesture: {
+      wave: ['Oi! Oi! Tô te vendo!', 'Ei, você! 👋', 'Acenando pra mim? Fofo.'], thumbsUp: ['Preem. Eu sei.', 'Valeu, choom.', 'É, eu sou demais, né?'],
+      thumbsDown: ['Grosso.', 'Hmpf. Tá bom.', 'Plateia difícil.'], peace: ['Paz, choom.', 'Paz e neon.'], love: ['Own… pra você também.', 'Assim eu dou glitch.'],
+      fist: ['Toca aqui! 👊', 'Bum. Respeito.'], stop: ['Tá, tá, parei.', 'Congelei aqui.'], shh: ['Shh… modo silêncio.'],
+      phone: ['Celular de novo? Eu tô aqui, sabia?', 'Esse celular é mais interessante que eu? Ai.'], phoneFocus: ['Modo foco, choom. Larga esse celular.', 'Ei. Celular. Na mesa. Você tá focando.'],
+      rpsStart: ['Jokenpô! Mostra a mão pra câmera quando eu disser já.', 'Melhor de três. Mão na frente da câmera!'],
+      rpsCount: ['Pedra…', 'Papel…', 'Tesoura…'], rpsGo: 'JÁ!', rpsNoHand: ['Não vi sua mão! De novo.', 'Mão na frente da câmera, trapaceiro!'],
+      rps_win: ['{me} ganha de {you}. Minha!', 'Rá! {me} contra {you}.'], rps_lose: ['{you} ganha de {me}… sorte.', 'Tá, {you} ganhou. Dessa vez.'], rps_draw: ['{you} e {me}. De novo!', 'Igual! Mentes brilhantes.'],
+      rpsNames: { rock: 'pedra', paper: 'papel', scissors: 'tesoura' }, rpsYouWon: 'Você ganhou de {you} a {me}. Exijo revanche.', rpsIWon: 'Eu ganhei de {me} a {you}. Óbvio.', rpsTie: 'Empate, {you} a {me}. Na próxima eu te esmago.',
+      rpsNoCam: 'Pra isso eu preciso da câmera (Câmera e sons › Usar minha câmera).',
+      portraitStart: ['Fica paradinho… deixa eu te desenhar.', 'Segura essa cara. Artista trabalhando.'], portraitDone: ['Pronto. Esse é você. Guardei nos meus desenhos.', 'Obra-prima. Salvei, óbvio.'],
+      portraitNoFace: 'Não tô vendo seu rosto agora. Olha pra câmera e me pede de novo.',
+    },
+    // conversando com ela (converse.js)
+    converse: { shrug: ['…tá, falo sozinha então.', 'Nada? Beleza, vou fingir que você disse sim.', 'Hm. Ocupado. Entendi.', 'Tímido hoje, é?'] },
     // o PC bloqueado (lockwatch.js)
     lock: {
       hi: 'Oi, {name}! 👋 Te vi aqui.', guest: 'Oi, {who}! 👋', stranger: 'Não te conheço… tô de olho nesse PC.',
@@ -2957,7 +2989,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

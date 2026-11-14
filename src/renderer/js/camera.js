@@ -9,6 +9,7 @@
 // The camera's light is on while she looks; she lets go of it during your calls (another app may
 // need it) and when you turn it off.
 
+import { headPose } from './gestures.js';
 import { fmt, rand, pick, inLang } from './util.js';
 import { clean, mood } from './chat.js';
 
@@ -89,16 +90,21 @@ export class Camera {
     await this.video.play().catch(() => {});
     if (!this.landmarker) {
       try {
-        const { FilesetResolver, FaceLandmarker } = await import(`${BASE}node_modules/@mediapipe/tasks-vision/vision_bundle.mjs`);
+        const Vision = await import(`${BASE}node_modules/@mediapipe/tasks-vision/vision_bundle.mjs`);
+        const { FilesetResolver, FaceLandmarker } = Vision;
         const files = await FilesetResolver.forVisionTasks(`${BASE}node_modules/@mediapipe/tasks-vision/wasm`);
+        this.Vision = Vision;
+        this.files = files;
         this.landmarker = await FaceLandmarker.createFromOptions(files, {
           baseOptions: { modelAssetPath: `${BASE}assets/mediapipe/face_landmarker.task`, delegate: 'CPU' },
-          runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true,
+          runningMode: 'VIDEO', numFaces: 2, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
         });
       } catch (err) {
         console.error('[capri] camera face model:', err);
       }
     }
+    // your hands too (gestures.js), with the same vision files
+    if (this.Vision && this.gestures?.on) this.gestures.load(this.files, this.Vision);
     clearInterval(this.loop);
     this.loop = setInterval(() => this.frame(), this.rate || 250);
   }
@@ -162,6 +168,8 @@ export class Camera {
     }
     if (faces) s.locked = false;
     if (!faces) return;
+    this.lastFace = r.faceLandmarks[0]; // her portrait of you (art.js) draws from it
+    if (!this.privacy) this.gestures?.frame(this.video, r.faceLandmarks[0], headPose(r.facialTransformationMatrixes?.[0]), now);
     // posture: your face filling the picture (too close to the screen), or low in it (slouching)
     const pts = r.faceLandmarks[0] || [];
     if (pts.length) {

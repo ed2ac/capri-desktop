@@ -320,12 +320,15 @@ export class Daily {
   }
 
   // what's playing: she dances to it, now and then (in a good mood, with some energy)
-  dance() {
+  // bpm: the music's beat (hearing.js), her moves on it; without it, her usual little dance
+  dance(bpm = null) {
     const h = this.heart;
     if (!this.free() || this.obs || (h && (h.energy < 40 || h.mood < 40)) || Date.now() - this.danceAt < 12 * 60000) return;
     this.danceAt = Date.now();
-    const moves = ['hop', 'spin', 'hop', 'curious', 'hop', 'spin'];
-    moves.forEach((m, i) => setTimeout(() => this.free() && this.capri.perform(m, i % 2 ? 1 : -1), i * 900));
+    const beat = bpm ? (60000 / bpm) * (bpm > 115 ? 2 : 1) : 900;
+    const moves = bpm ? ['hop', 'hop', 'spin', 'hop', 'curious', 'hop', 'spin', 'split', 'hop', 'hop', 'spin', 'victory'] : ['hop', 'spin', 'hop', 'curious', 'hop', 'spin'];
+    moves.forEach((m, i) => setTimeout(() => this.free() && this.capri.perform(m, i % 2 ? 1 : -1), i * beat));
+    if (bpm) for (let i = 0; i < moves.length; i += 2) setTimeout(() => this.free() && this.capri.shed?.(), i * beat + beat / 2);
     setTimeout(() => this.panel.say({ kind: 'info', face: 'laugh', line: this.brain.line('daily.dance'), hold: 3000 }), 600);
   }
 

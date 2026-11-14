@@ -69,7 +69,7 @@ export class Art {
   }
 
   // Draws one at (x, y) (its top left), size px: resolves with { name, url, file } once done and saved.
-  async draw({ x, y, size = 240, name = pick(ART_NAMES), hold = 14000, reduced = false } = {}) {
+  async draw({ x, y, size = 240, name = pick(ART_NAMES), strokes: given = null, hold = 14000, reduced = false } = {}) {
     if (this.drawing) return null;
     this.drawing = true;
     const pad = 16;
@@ -88,7 +88,7 @@ export class Art {
     ctx.lineJoin = 'round';
     const color = pick(COLORS);
     const second = pick(COLORS.filter((c) => c !== color));
-    const strokes = DRAWINGS[name]?.() || DRAWINGS.heart();
+    const strokes = given || DRAWINGS[name]?.() || DRAWINGS.heart();
     const at = ([u, v]) => [pad + u * size + rand(-1.4, 1.4), pad + v * size + rand(-1.4, 1.4)];
     const line = (pts, upto, c) => {
       ctx.strokeStyle = c;
@@ -147,4 +147,39 @@ export class Art {
     setTimeout(() => { img.style.opacity = '0'; }, ms);
     setTimeout(() => img.remove(), ms + 600);
   }
+}
+
+// Your portrait, from the face the camera sees (MediaPipe's landmarks and its lists of which points
+// join up: the face's outline, eyes, brows, lips, irises), mirrored like a mirror, in a 0..1 box.
+export function portraitStrokes(points, Vision) {
+  const F = Vision?.FaceLandmarker;
+  if (!points?.length || !F) return null;
+  const sets = ['FACE_LANDMARKS_FACE_OVAL', 'FACE_LANDMARKS_LEFT_EYE', 'FACE_LANDMARKS_RIGHT_EYE', 'FACE_LANDMARKS_LEFT_EYEBROW',
+    'FACE_LANDMARKS_RIGHT_EYEBROW', 'FACE_LANDMARKS_LIPS', 'FACE_LANDMARKS_LEFT_IRIS', 'FACE_LANDMARKS_RIGHT_IRIS'].map((k) => F[k]).filter(Boolean);
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const span = Math.max(x1 - x0, y1 - y0) || 1;
+  const at = (i) => [0.1 + 0.8 * (1 - (points[i].x - x0) / span - (span - (x1 - x0)) / span / 2), 0.1 + 0.8 * ((points[i].y - y0) / span + (span - (y1 - y0)) / span / 2)];
+  const strokes = [];
+  for (const edges of sets) {
+    // the edges chained into lines
+    const left = edges.map((e) => [e.start, e.end]);
+    while (left.length) {
+      const line = left.shift();
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (let i = 0; i < left.length; i++) {
+          const [a, b] = left[i];
+          if (a === line.at(-1)) { line.push(b); left.splice(i, 1); grew = true; break; }
+          if (b === line[0]) { line.unshift(a); left.splice(i, 1); grew = true; break; }
+        }
+      }
+      strokes.push(line.map(at));
+    }
+  }
+  // her touch: a nose, and blush
+  if (points[1] && points[2]) strokes.push([at(168), at(1), at(2)]);
+  return strokes;
 }

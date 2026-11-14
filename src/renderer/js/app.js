@@ -30,6 +30,8 @@ import { FaceId } from './faceid.js';
 import { Presence } from './presence.js';
 import { Art } from './art.js';
 import { LockWatch } from './lockwatch.js';
+import { Converse } from './converse.js';
+import { Gestures } from './gestures.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -686,6 +688,24 @@ async function boot() {
   // the PC locked: who comes to it, a sound and a notification, and what she saw once it's unlocked
   const lockWatch = new LockWatch({ capri, panel, brain, host, camera, face, presence, voice });
   lockWatch.configure(config);
+  // talking with her (converse.js): her questions listened for, and conversations she starts
+  const converse = new Converse({ capri, panel, brain, host, chat, guide, voice, life, presence, mic });
+  Object.assign(converse, { daily, camera, heart });
+  converse.configure(config);
+  const sayShown = panel.say.bind(panel);
+  panel.say = (msg) => {
+    const shown = sayShown(msg);
+    if (shown !== false) converse.saw(msg);
+    return shown;
+  };
+  chat.onAnswered = (answer) => converse.onAnswer(answer);
+  // your hands and your head (gestures.js), through the camera
+  const gestures = new Gestures({ capri, panel, brain, host, heart, voice, life, daily, chat, presence });
+  gestures.configure(config);
+  camera.gestures = gestures;
+  if (camera.Vision) gestures.load(camera.files, camera.Vision);
+  Object.assign(chat, { gestures, art, camera });
+  chat.onClosed = () => converse.onClose();
   // her ears on the room (hearing.js)
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
@@ -697,6 +717,8 @@ async function boot() {
     voice.play('tick');
     mic.toggle({ asked: true }); // "Hear the room" + "Answer when I call her" on: that was your yes
   };
+  // two claps: she comes and listens, like when she hears her name
+  hearing.onClap = () => hearing.onWake?.();
   capri.onPointer = (x, y) => {
     play.onPointer(x, y);
     senses.onPointer(x, y);
@@ -716,7 +738,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -884,6 +906,8 @@ async function boot() {
     hearing.configure(cfg);
     face.configure(cfg);
     lockWatch.configure(cfg);
+    converse.configure(cfg);
+    gestures.configure(cfg);
     if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;

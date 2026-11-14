@@ -10,6 +10,36 @@
 
 const BASE = new URL('../../../', import.meta.url).href;
 
+// Two claps call her (like her name): two sharp knocks in the sound, a beat apart, and the classifier
+// agreeing it heard hands clapping (your keyboard is sharp too, but it isn't clapping).
+const BLOCK = 512;                  // samples per energy block (~11 ms)
+const CLAP_GAP = [140, 750];        // ms between the two
+const CLAP_WORDS = /^(Clapping|Hands|Applause|Slap, smack|Finger snapping)$/;
+const ENVELOPE_S = 8;               // seconds of loudness kept, for the music's beat
+
+// The beat of what's playing: the loudness rising in blocks (onsets), and the delay at which that
+// pattern repeats best, between 70 and 170 BPM. { bpm, strength } or null.
+export function tempo(envelope, blocksPerSecond) {
+  const n = envelope.length;
+  if (n < blocksPerSecond * 4) return null;
+  const onset = new Float32Array(n);
+  for (let i = 1; i < n; i++) onset[i] = Math.max(0, envelope[i] - envelope[i - 1]);
+  const mean = onset.reduce((s, v) => s + v, 0) / n;
+  for (let i = 0; i < n; i++) onset[i] -= mean;
+  let best = null;
+  let zero = 0;
+  for (let i = 0; i < n; i++) zero += onset[i] * onset[i];
+  if (zero <= 0) return null;
+  for (let bpm = 70; bpm <= 170; bpm += 1) {
+    const lag = Math.round((60 / bpm) * blocksPerSecond);
+    let s = 0;
+    for (let i = lag; i < n; i++) s += onset[i] * onset[i - lag];
+    const score = s / zero;
+    if (!best || score > best.strength) best = { bpm, strength: score };
+  }
+  return best && best.strength > 0.15 ? best : null;
+}
+
 // what she listens for: YAMNet's names -> what it is to her, how sure, how often at most (min)
 const SOUNDS = [
   [/^(Laughter|Giggle|Belly laugh|Chuckle, chortle|Baby laughter)$/, 'laugh', 0.45, 6],
@@ -117,8 +147,13 @@ export class Hearing {
     const proc = this.ctx.createScriptProcessor(4096, 1, 1);
     const rate = this.ctx.sampleRate;
     let buf = new Float32Array(0);
+    this.blocksPerSecond = rate / BLOCK;
+    this.envelope = [];
+    this.bg = 0.01;
+    this.onsets = [];
     proc.onaudioprocess = (e) => {
       const chunk = e.inputBuffer.getChannelData(0);
+      this.blocks(chunk);
       const next = new Float32Array(buf.length + chunk.length);
       next.set(buf);
       next.set(chunk, buf.length);
@@ -144,6 +179,31 @@ export class Hearing {
     this.stream = null;
   }
 
+  // the loudness, block by block: the beat's envelope, and claps (sharp knocks over the room's noise)
+  blocks(chunk) {
+    const now = performance.now();
+    for (let i = 0; i + BLOCK <= chunk.length; i += BLOCK) {
+      let s = 0;
+      for (let j = i; j < i + BLOCK; j++) s += chunk[j] * chunk[j];
+      const rms = Math.sqrt(s / BLOCK);
+      this.envelope.push(rms);
+      const sharp = rms > Math.max(0.07, this.bg * 6) && (this.lastRms ?? 0) < rms * 0.5;
+      this.bg = this.bg * 0.995 + rms * 0.005;
+      this.lastRms = rms;
+      if (sharp) {
+        const at = now + (i / BLOCK) * (1000 / this.blocksPerSecond);
+        this.onsets = [...this.onsets.filter((t) => at - t < 2000), at];
+        const [a, b, c] = this.onsets.slice(-3);
+        // exactly two, a beat apart (a third right before them: it's music, or typing)
+        const two = this.onsets.length >= 2 && b && at === (c ?? b) && (c ?? b) - (c ? b : a) >= CLAP_GAP[0] && (c ?? b) - (c ? b : a) <= CLAP_GAP[1]
+          && !(c && b - a < 900);
+        if (two) this.clapAt = at;
+      }
+    }
+    const keep = Math.round(ENVELOPE_S * this.blocksPerSecond);
+    if (this.envelope.length > keep) this.envelope.splice(0, this.envelope.length - keep);
+  }
+
   hear(samples, rate) {
     let results;
     try {
@@ -152,6 +212,14 @@ export class Hearing {
       return;
     }
     const cats = results.flatMap((r) => r.classifications?.[0]?.categories || []);
+    // two claps just now, and it does sound like hands clapping (not music): she comes
+    if (this.clapAt && performance.now() - this.clapAt < 1800) {
+      const music = cats.some((c) => /^Music$/.test(c.categoryName) && c.score > 0.4);
+      if (!music && cats.some((c) => CLAP_WORDS.test(c.categoryName) && c.score >= 0.15)) {
+        this.clapAt = 0;
+        this.onClap?.();
+      }
+    }
     const found = new Set();
     for (const c of cats) {
       for (const [re, kind, min] of SOUNDS) {
@@ -181,7 +249,10 @@ export class Hearing {
     c.wake();
     if (kind === 'thunder') return this.emotions?.fear('storm');
     if (kind === 'music' || kind === 'sing') {
-      this.daily?.dance();
+      // to the beat of it, if she can make it out
+      const beat = kind === 'music' ? tempo(this.envelope || [], this.blocksPerSecond || 93.75) : null;
+      if (beat && this.daily?.dance) this.daily.dance(beat.bpm);
+      else this.daily?.dance();
       if (kind === 'music') return undefined;
     }
     const body = { laugh: 'split', applause: 'hop', sneeze: 'flinch', bang: 'flinch', alarm: 'alarm', door: 'alarm', phone: 'curious', dog: 'curious', cat: 'curious', cry: 'look', sing: 'hop', whistle: 'curious', snore: 'look', burp: 'huff', cough: 'look' }[kind] || 'curious';

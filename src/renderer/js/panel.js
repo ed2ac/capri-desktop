@@ -1,6 +1,6 @@
 // The transmission panel next to Capri, and the one-line ticker she wears while Claude works.
 
-import { clamp, ease, reducedMotion } from './util.js';
+import { clamp, ease, reducedMotion, tidy } from './util.js';
 
 const NOISE = '▚▞▙▟░▒#%&/\\<>01XZ';
 
@@ -105,6 +105,7 @@ export class Panel {
   // progress: a bar under the line, 0..1 (a download)
   // onLeave: () => void, when this message goes (closed, timed out or replaced)
   say(msg) {
+    if (msg && typeof msg.line === 'string') msg = { ...msg, line: tidy(msg.line) };
     const cur = this.current;
     // don't step on something more important that just appeared (one step of her guide follows another)
     const steps = cur?.guide && msg.guide;
@@ -124,6 +125,10 @@ export class Panel {
     if (cur && this.visible) this.onDismiss?.(cur);
     cur?.onLeave?.();
     this.current = { ...msg, at: performance.now() };
+    // what she said lately, so her AI doesn't say it again (chat.js languageNote)
+    if (msg.line && !msg.guide && msg.line.length > 20) {
+      this.recent = [...(this.recent || []).filter((r) => r.line !== msg.line && performance.now() - r.at < 3 * 3600000), { line: msg.line, at: performance.now() }].slice(-8);
+    }
     clearTimeout(this.hideTimer);
 
     this.el.dataset.kind = msg.kind;

@@ -78,7 +78,39 @@ const WORDS = {
   es: /\b(tú|usted|que|qué|con|una|un|de|del|el|la|es|yo|tu|aquí|más|cómo|estás|pero)\b|[ñ¿¡]/gi,
   fr: /\b(tu|vous|que|qui|avec|une|un|de|du|le|la|les|est|je|ton|ta|ici|plus|comme|mais|pas)\b|[àèùç]/gi,
 };
+// words a small model lets slip into her Portuguese (Spanish, mostly) or makes up: a line with one
+// of these is redone, like a line in English
+const SLIPS = {
+  pt: /(?<![\p{L}])(pelea|peleando|chloe|también|tambien|muy|tengo|quiero|hola|gracias|cariño|pero sí|vale la pena|ahora mismo|estás|qué tal|mientras tanto sí|claro que sí|amigo mío|chica|chico|nuestra|nuestro)(?![\p{L}])/iu,
+  es: /(?<![\p{L}])(você|não|obrigad[oa]|também|muito|chloe)(?![\p{L}])/iu,
+  fr: /(?<![\p{L}])(chloe)(?![\p{L}])/iu,
+  en: /(?<![\p{L}])(chloe)(?![\p{L}])/iu,
+};
+
+// A line of hers as it should be said: no tone label the model wrote ("(Sleepy)", "[sarcastic]"), no
+// stray quotes, no "Capri:" in front, no stage directions in asterisks.
+const TONES = 'teasing|proud|sleepy|chaotic|sweet|deadpan|dramatic|smug|sarcastic|playful|warm|curious|happy|sad|angry|excited|bored|tired|flirty|shy|mischievous|serious|soft|whisper(?:ing)?|laughs?|giggles?|sighs?|yawns?|provocante|sonolenta|caótica|doce|irônica|dramática|orgulhosa|brincalhona|fofa|curiosa|animada|cansada|sarcástica';
+const TONE_TAG = new RegExp(`\\s*[([](?:${TONES})(?:\\s*[,/&e]\\s*(?:${TONES}))*[)\\]]\\s*`, 'giu');
+export function tidy(text) {
+  let s = String(text ?? '');
+  if (!s) return s;
+  s = s.replace(TONE_TAG, ' ')
+    .replace(/\*[^*\n]{1,40}\*/g, ' ') // *giggles*
+    .replace(/^\s*(?:capri|ela|she)\s*:\s*/i, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  // quotes round the whole line, or one left hanging at an end
+  for (let i = 0; i < 2; i++) {
+    const m = /^["“”«'](.*)["“”»']$/s.exec(s);
+    if (m) s = m[1].trim();
+  }
+  const count = (re) => (s.match(re) || []).length;
+  if (count(/["“”]/g) % 2) s = s.replace(/^["“”]\s*|\s*["“”]$/g, '').trim();
+  return s.replace(/\s+([,.!?…])/g, '$1');
+}
+
 export function inLang(text, lang) {
+  if (SLIPS[lang]?.test(String(text))) return false;
   if (!WORDS[lang] || lang === 'en') return true;
   if (lang === 'ru') return /[а-яё]/i.test(text) || !WORDS.en.test(text);
   const en = (String(text).match(WORDS.en) || []).length;

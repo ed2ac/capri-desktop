@@ -9,6 +9,7 @@ import { pick, fmt, inLang } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
 import { folderIn } from './hands.js';
+import { portraitStrokes } from './art.js';
 
 const REMEMBER = 20; // messages she has in mind when answering
 const KEEP = 60;     // messages she remembers across restarts (memory.json)
@@ -32,6 +33,10 @@ const CLIP_ASK = /(?:o que (?:eu )?copiei|(?:texto|conte[úu]do) (?:que )?(?:eu 
 const TASK_TAG = /\[\[\s*task\s*:\s*([^\]]*)\]\]/i;
 const TASK_ASK = /^\s*(?:capri,?\s+)?(?:tarefa|task|t[âa]che|tarea|задача|claude)\s*[:,]\s*(.{4,})$/is;
 // work to do in a folder you named ("abra a pasta site no windows e faça esse código"): her hands
+// "jokenpô", "pedra papel tesoura": a game with your hand in front of the camera (gestures.js)
+const RPS_ASK = /jokenp[ôo]|pedra,?\s+papel,?\s+(?:e\s+)?tesoura|rock,?\s+paper,?\s+(?:and\s+)?scissors|piedra,?\s+papel|pierre,?\s+feuille/i;
+// "me desenha", "faz um retrato meu": her drawing of your face (art.js)
+const PORTRAIT_ASK = /(?:me\s+desenh|desenh[ae]\s+(?:o\s+)?meu\s+rosto|desenh[ae]\s+eu\b|(?:faz|faça|fazer)\s+um\s+retrato\s+meu|retrato\s+meu|draw\s+me\b|draw\s+my\s+(?:face|portrait)|my\s+portrait)/i;
 // "quanto do limite do claude?", "how much claude usage is left"
 const USAGE_ASK = /(?<![\p{L}])(?:limite|limit|uso|usage|cota|quota|franquia)(?![\p{L}])[^.?!]{0,30}(?<![\p{L}])claude(?![\p{L}])|(?<![\p{L}])claude(?![\p{L}])[^.?!]{0,30}(?<![\p{L}])(?:limite|limit|uso|usage|cota|quota)(?![\p{L}])/iu;
 const WORK_ASK = /(?<![\p{L}])(?:fa[çc]a|faz|fazer|cri[ae]|criar|corrij[ae]|corrige|conserta|arrum[ae]|implement[ae]|refator[ae]|programa|escrev[ae]|monta|adicion[ae]|c[óo]digo|code|make|build|fix|write|implement|refactor|add|create)(?![\p{L}])/iu;
@@ -277,7 +282,8 @@ export class Chat {
     return this.brain.t.chat;
   }
 
-  async start() {
+  // opening: her own line to open it with instead of a hello (a question of hers you answered out loud)
+  async start({ opening = null } = {}) {
     const { capri, host, t } = this;
     if (this.open) {
       this.panel.chatInput.focus();
@@ -324,8 +330,9 @@ export class Chat {
     // angry, sulking, dizzy…: she greets you the way she feels, and her model is told she did
     const feeling = this.bond?.feeling;
     const moody = !tiny && feeling && t.moody[feeling];
-    const hello = moody ? fmt(pick(moody), this.bond.mood.vars) : pick(this.history.length ? t.again : t.hello);
-    this.opening = moody ? hello : null;
+    const hello = opening || (moody ? fmt(pick(moody), this.bond.mood.vars) : pick(this.history.length ? t.again : t.hello));
+    this.opening = moody || opening ? hello : null;
+    if (opening) this.remember({ role: 'assistant', content: opening }); // what you're answering
     host.focusOverlay(true); // the keyboard, for typing to her
     const shown = this.panel.say({
       kind: 'chat',
@@ -362,6 +369,7 @@ export class Chat {
   close() {
     if (!this.open) return;
     this.open = false;
+    this.onClosed?.();
     if (this.turn) this.host.chatStop(this.turn);
     this.turn = 0;
     this.host.focusOverlay(false);
@@ -494,6 +502,7 @@ export class Chat {
       });
     }
     if (!this.agent) this.after(res.text, answer, asked, early, text);
+    this.onAnswered?.(answer); // converse.js: a question in it, asked in a talk out loud, is listened for
     this.listApps(); // fresh for the next message
   }
 
@@ -597,6 +606,8 @@ export class Chat {
     if (task && this.hands) return { kind: 'task', text: task[1].trim() };
     if (this.hands && WORK_ASK.test(text) && folderIn(text)) return { kind: 'task', text: text.trim() };
     if (this.hands && USAGE_ASK.test(text)) return { kind: 'usage' };
+    if (this.gestures && RPS_ASK.test(text)) return { kind: 'rps' };
+    if (this.art && PORTRAIT_ASK.test(text)) return { kind: 'portrait' };
     if (this.reminders) {
       const remind = parseReminder(text);
       if (remind) return { kind: 'remind', ...remind };
@@ -805,6 +816,7 @@ export class Chat {
   // Doing it now. Resolves with her line about it ({ line, face }), or null if there was nothing to do.
   async doNow(asked) {
     if (asked.kind === 'usage') return { line: await this.hands.usageLine(), face: 'look' };
+    if (asked.kind === 'rps' || asked.kind === 'portrait') return this.bodyGame(asked.kind);
     if (asked.kind === 'pc') return this.pcNow(asked);
     const { t } = this;
     const custom = this.brain.custom;
@@ -979,6 +991,34 @@ export class Chat {
     if (item) return this.launch(item, answer);
     const site = namedSite(value); // "[[open: YouTube]]": a site, not an app
     return site ? this.offerSite(site.url, answer, text) : this.addLine(answer, fmt(t.notInstalled, { app: value }));
+  }
+
+  // her games with the camera: the chat closes and she plays on screen
+  async bodyGame(kind) {
+    const g = this.brain.t.gesture;
+    if (!this.camera?.on) return { line: g.rpsNoCam, face: 'aside' };
+    setTimeout(async () => {
+      this.panel.hide();
+      this.close();
+      await new Promise((r) => setTimeout(r, 700));
+      if (kind === 'rps') {
+        const end = await this.gestures.rps();
+        if (end) this.panel.say({ kind: 'info', face: 'laugh', line: end, hold: 5000 });
+        return;
+      }
+      const strokes = portraitStrokes(this.camera.lastFace, this.camera.Vision);
+      if (!strokes) return this.panel.say({ kind: 'info', face: 'aside', line: g.portraitNoFace, hold: 4000 });
+      const c = this.capri;
+      const size = 260;
+      const h = c.head();
+      const right = h.x < window.innerWidth / 2;
+      const x = Math.max(10, Math.min(window.innerWidth - size - 50, right ? h.x + 70 : h.x - size - 110));
+      const y = Math.max(10, Math.min(window.innerHeight - size - 90, h.y - size / 2));
+      c.perform('curious', right ? 1 : -1);
+      const done = await this.art.draw({ x, y, size, strokes, name: 'portrait', hold: 20000 });
+      if (done) this.panel.say({ kind: 'info', face: 'smug', line: pick(g.portraitDone), hold: 5000 });
+    }, 1200);
+    return { line: kind === 'rps' ? pick(g.rpsStart) : pick(g.portraitStart), face: 'smug' };
   }
 
   // her answer, with a line of what she did under it
@@ -1222,7 +1262,9 @@ export class Chat {
 
   // Her language, in it, for right by the message (above).
   languageNote() {
-    return (IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en).now;
+    const recent = (this.panel?.recent || []).slice(-6).map((r) => `"${r.line.replace(/\s+/g, ' ').slice(0, 110)}"`);
+    return (IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en).now
+      + (recent.length ? `\nYou said these lately: ${recent.join(' / ')}. Say something new: not the same idea, not the same words or jokes.` : '');
   }
 
   // A shorter one, for when she looks at your screen (look.js): who she is, how she talks, how she

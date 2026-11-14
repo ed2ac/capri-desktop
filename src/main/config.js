@@ -47,6 +47,8 @@ const DEFAULTS = {
   chatty: 'normal',
   pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
   localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
+  gestures: true, // your hands and head through the camera: waves, thumbs up, "shh", eye contact (gestures.js)
+  converse: true, // she listens a few seconds for your answer when she asks you something (converse.js)
   lockSnap: false, // a photo of a stranger at the locked PC, in ~/Capri/visitas (lockwatch.js)
   workshopAuto: true, // her coding workshop window opens (in the background) when Claude starts a task
   projectsRoot: '~/dev', // where your code projects are in WSL, for her hands (tasks.js)

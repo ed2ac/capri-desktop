@@ -854,6 +854,8 @@ function rebuildTray() {
         { label: t.cameraLook, type: 'checkbox', checked: cfg.cameraLook === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ cameraLook: item.checked }) },
         { label: cfg.faceData ? t.faceAgain : t.faceEnroll, enabled: cfg.cameraOn === true, click: () => sendCommand('faceEnroll') },
         { label: t.lockStrangers, type: 'checkbox', checked: cfg.lockStrangers === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockStrangers: item.checked }) },
+        { label: t.gestures, type: 'checkbox', checked: cfg.gestures !== false, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ gestures: item.checked }) },
+        { label: t.converse, type: 'checkbox', checked: cfg.converse !== false, enabled: cfg.micAsked === true, click: (item) => updateConfig({ converse: item.checked }) },
         { label: t.lockSnap, type: 'checkbox', checked: cfg.lockSnap === true, enabled: Boolean(cfg.faceData) && cfg.cameraOn === true, click: (item) => updateConfig({ lockSnap: item.checked }) },
         ...(cfg.faceData ? [{ label: t.faceForget, click: () => { updateConfig({ faceData: null }); sendCommand('faceForget'); } }] : []),
         { label: t.lockAway, type: 'checkbox', checked: cfg.lockAway === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ lockAway: item.checked }) },
