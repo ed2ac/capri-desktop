@@ -42,7 +42,7 @@ export class Shell {
 
   handle(evt) {
     const command = String(evt.command || '').trim();
-    if (!command || !this.quiet) return;
+    if (!command || !this.quiet || this.away) return;
     const code = Number(evt.exit_code) || 0;
     const ms = Number(evt.duration_ms) || 0;
     const now = Date.now();

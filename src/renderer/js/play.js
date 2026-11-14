@@ -58,7 +58,7 @@ export class Play {
   get free() {
     const c = this.capri;
     return !c.busy && !c.dragging && !c.hidden && !c.stowed && !c.dormant && !c.sky && !c.act
-      && c.mode !== 'alert' && c.mode !== 'sleep' && !this.chat.open && !this.guide.running && !this.panel.current?.actions?.length;
+      && c.mode !== 'alert' && c.mode !== 'sleep' && !this.away && !this.chat.open && !this.guide.running && !this.panel.current?.actions?.length;
   }
 
   attention() {

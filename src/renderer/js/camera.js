@@ -44,7 +44,7 @@ export class Camera {
     const on = cameraOn === true;
     if (on !== this.on) {
       this.on = on;
-      if (on) this.start();
+      if (on && !this.napping) this.start();
       else this.stop();
     }
   }
@@ -100,7 +100,15 @@ export class Camera {
       }
     }
     clearInterval(this.loop);
-    this.loop = setInterval(() => this.frame(), 250);
+    this.loop = setInterval(() => this.frame(), this.rate || 250);
+  }
+
+  // how often she looks (presence.js): 4 times a second, or a glance every few seconds while you're away
+  setRate(ms) {
+    this.rate = ms || null;
+    if (!this.loop) return;
+    clearInterval(this.loop);
+    this.loop = setInterval(() => this.frame(), this.rate || 250);
   }
 
   stop({ keep = false } = {}) {
@@ -127,6 +135,7 @@ export class Camera {
     const faces = r.faceLandmarks?.length || 0;
     const b = r.faceBlendshapes?.[0]?.categories || [];
     // there or not: a while without a face is gone, a while back is back
+    if (faces) this.lastFaceAt = now;
     if (faces) {
       s.seen = s.seen || now;
       if (!s.present && now - s.seen > 1500) {

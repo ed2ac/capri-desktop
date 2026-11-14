@@ -147,6 +147,7 @@ export class Hands {
       line = res.error === 'noclaude' ? t.noClaude : res.error === 'cancelled' ? t.cancelled : res.error === 'busy' ? t.busy : res.error === 'nofolder' ? fmt(t.noFolder || t.failed, { folder: folder || '', error: folder || '' }) : fmt(t.failed, { error: clip(String(res.error), 160) });
       if (res.error !== 'cancelled') this.voice.play('error');
     }
+    this.presence?.note(line); // you're away: she tells you when you're back
     if (!this.chat.interject(line, [], null)) {
       this.panel.say({ kind: res.ok ? 'done' : 'error', face, line, hold: Math.min(16000, 4000 + line.length * 50) });
     }

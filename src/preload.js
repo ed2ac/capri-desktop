@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('host', {
   onUsage: on('usage:update'),
   claudeUsage: () => ipcRenderer.invoke('work:usage'),
   openWorkshop: () => ipcRenderer.send('work:open'),
+  saveArt: (url) => ipcRenderer.invoke('art:save', url),
   gateAnswer: (id, allow, reason) => ipcRenderer.send('gate:answer', { id, allow, reason }),
   daysGet: () => ipcRenderer.invoke('days:get'),
   daysSave: (data) => ipcRenderer.send('days:save', data),

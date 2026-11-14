@@ -73,6 +73,8 @@ export class Brain {
   }
 
   say(kind, line, s, extra = {}) {
+    // you're away (presence.js): of Claude only its answer, and asleep not even that (kept for later)
+    if (this.hushed && !['done', 'alert', 'error'].includes(kind)) return false;
     return this.panel.say({ kind, line, tag: s ? s.title || s.project : '', ...extra });
   }
 
@@ -103,8 +105,16 @@ export class Brain {
     const s = this.session(evt);
     const name = evt.hook_event_name;
     // these three put her somewhere themselves; anything else just brings her out of hiding
-    if (name === 'UserPromptSubmit' || name === 'Stop' || name === 'Notification') this.capri.wake();
-    else this.capri.attend();
+    // away, Claude's steps don't call her over; asleep, only a question of Claude's wakes her
+    const asleep = this.hushed && this.presence?.state === 'asleep';
+    if (name === 'Notification' || (!this.hushed && (name === 'UserPromptSubmit' || name === 'Stop'))) this.capri.wake();
+    else if (!this.hushed) this.capri.attend();
+    if (asleep && name === 'Stop') {
+      this.presence.claudeDone(evt.last_assistant_message, s.project);
+      s.working = false;
+      if (!this.busySessions.length) this.panel.setTicker(null);
+      return undefined;
+    }
 
     // anything happening after a permission prompt means it was answered
     if (s.waiting && name !== 'Notification') {
@@ -388,7 +398,8 @@ export class Brain {
     if (bigJob) await this.capri.teleport(this.capri.spot('stage'));
     // the panel comes in once she's back down from her victory pose
     this.capri.celebrate({ onSpeak: () => done({ summary, hold: 14000 }) });
-    this.review(evt, s);
+    if (this.hushed) this.presence?.claudeDone(evt.last_assistant_message, s.project);
+    else this.review(evt, s);
     // a long one: she'll send the red light up to the satellite once it's all quiet
     if ((s.taskStart && Date.now() - s.taskStart >= LONG_JOB_MS) || s.count >= LONG_JOB_ACTIONS) this.capri.earnUplink();
   }

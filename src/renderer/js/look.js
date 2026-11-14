@@ -108,6 +108,7 @@ export class Look {
 
   free() {
     const { capri, panel } = this;
+    if (this.away) return false; // nobody there (presence.js): nothing to say about the screen
     if (capri.busy || capri.dragging || capri.stowed || capri.dormant || capri.hidden || capri.act || capri.pointing) return false;
     if (!['stand', 'sit'].includes(capri.stance) || capri.mode === 'alert' || capri.mode === 'sleep') return false;
     return !this.chat.open && !this.guide.running && !panel.visible;

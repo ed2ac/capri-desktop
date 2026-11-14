@@ -12,11 +12,16 @@
 //   stars     she looks up for the satellite
 //   muse      she says something to herself (her AI's idle lines), rarely
 //   classic   what she always did: sit, peek, teleport, a flourish
+//   draw      (alone, presence.js) a real drawing, stroke by stroke, kept for you (art.js)
+//   read      (alone) she sits with a little book a while
+//
+// Alone (you're away), nothing that's about you (watching your window, sneaking up on your pointer,
+// muttering at you): her own things, more often.
 //
 // It only takes over her idle moments (capri.wanderStep), and her next move comes sooner when she's
 // lively, later when she's tired.
 
-import { pick, rand } from './util.js';
+import { pick, rand, reducedMotion } from './util.js';
 
 // where to sit on a window: somewhere along its top edge
 const seat = (w) => ({ win: w, dx: Math.max(60, Math.min(Math.max(60, w.w - 190), w.w * rand(0.2, 0.6))) });
@@ -58,6 +63,14 @@ export class Life {
     const c = this.capri;
     const night = new Date().getHours() < 6;
     const still = this.play?.mouse && performance.now() - (this.lastPointer || 0) > 8000;
+    if (this.away) {
+      return [
+        ['draw', this.art && !this.art.drawing && Date.now() - (this.drewAt || 0) > 5 * 60000 ? 3 : 0],
+        ['doodle', 1.2], ['juggle', h.energy > 30 ? 2 : 0.5], ['workout', h.energy > 45 ? 1.8 : 0.3],
+        ['explore', (c.windows?.wins || []).length >= 2 ? 1.5 : 0], ['stroll', 2], ['hum', 2], ['stars', 1.2],
+        ['read', 1.5], ['clock', 0.5], ['nap', h.energy < 35 ? 2 : 0], ['classic', 1],
+      ].filter(([, w]) => w > 0);
+    }
     return [
       ['classic', 2],
       ['stroll', h.energy > 35 ? 3 : 0.5],
@@ -238,6 +251,32 @@ export class Life {
 
   stars() {
     this.capri.gaze?.();
+  }
+
+  // alone: a real drawing, near her, kept in her workshop for you
+  async draw() {
+    const c = this.capri;
+    if (!this.art || c.busy) return this.base();
+    this.drewAt = Date.now();
+    const size = 220;
+    const h = c.head();
+    const right = h.x < window.innerWidth / 2;
+    const x = Math.max(10, Math.min(window.innerWidth - size - 50, right ? h.x + 70 : h.x - size - 110));
+    const y = Math.max(10, Math.min(window.innerHeight - size - 90, h.y - size / 2));
+    c.facing = right ? 1 : -1;
+    c.perform('curious', right ? 1 : -1);
+    const done = await this.art.draw({ x, y, size, reduced: reducedMotion.matches });
+    if (done && !c.busy) c.perform('hop', right ? 1 : -1);
+    return undefined;
+  }
+
+  // alone: a little book, a while
+  read() {
+    const c = this.capri;
+    c.perform('look', c.towardCenter());
+    const h = c.head();
+    this.float('📖', h.x + 20 * c.facing, h.y + 30, 9000, { size: 30, still: true });
+    for (let i = 1; i <= 3; i++) setTimeout(() => !c.busy && c.mode === 'idle' && this.float(pick(['…', '?', '!', '♪']), h.x + rand(-10, 40), h.y - 30, 1800), i * 2600);
   }
 
   // a word to herself, now and then

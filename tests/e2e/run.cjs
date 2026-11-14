@@ -96,6 +96,14 @@ async function main() {
     await d.mic.toggle({ asked: true }); d.guide.ask = real; d.mic.start = realStart; d.mic.asked = ${JSON.stringify(Boolean(original.micAsked))};
     return { asked };`, (v) => v.asked === false);
 
+  // away (presence.js): the screen left alone, a drawing (not saved: the test's isn't yours), the recap when back
+  await check('away: she leaves your screen alone, draws, and tells you what happened', `
+    const p = d.presence; const lines = []; const say = d.panel.say.bind(d.panel); d.panel.say = (x) => { lines.push(x.line); return say(x); };
+    const host = d.art.host; d.art.host = { saveArt: async (url) => (url.startsWith('data:image/png') && url.length > 2000 ? 'saved' : null) };
+    p.goAway(); const quiet = !d.look.free() && d.brain.hushed === true && d.play.away === true;
+    const a = await d.art.draw({ x: 40, y: 40, size: 120, reduced: true, hold: 1500 }); d.art.host = host;
+    p.claudeDone('Tudo certo por aqui.', 'capri'); p.back(); await sleep(1800); d.panel.say = say;
+    return { quiet, art: a && a.file, back: p.state, said: lines.join(' | ').slice(0, 200), loud: d.look.free !== undefined && !d.brain.hushed };`, (v) => v.quiet && v.art === 'saved' && v.back === 'here' && /Claude/.test(v.said) && v.loud);
   // her coding workshop: it opens, and shows the plan's use
   await ev('h.openWorkshop(); await sleep(3000); return true');
   {

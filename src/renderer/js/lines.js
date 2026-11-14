@@ -1101,6 +1101,12 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // while you're away (presence.js)
+    presence: {
+      back: 'Oh, you’re back! While you were gone:', backLong: 'Finally! You were gone a while. Here’s what happened:',
+      drew: 'And I drew you something.', claude: 'Claude finished: “{text}”', claudeIn: 'Claude finished on {project}: “{text}”',
+      pcIssues: 'I looked over the PC: {count} thing(s) need you (ask me for a checkup).',
+    },
     // who's at the PC (faceid.js)
     face: {
       notOn: 'Turn the camera on first (Camera and sounds › Use my camera) and I’ll learn your face.',
@@ -2282,6 +2288,12 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // enquanto você tá fora (presence.js)
+    presence: {
+      back: 'Ah, voltou! Enquanto você tava fora:', backLong: 'Até que enfim! Você sumiu um tempão. Olha o que rolou:',
+      drew: 'E eu fiz um desenho pra você.', claude: 'O Claude terminou: “{text}”', claudeIn: 'O Claude terminou no {project}: “{text}”',
+      pcIssues: 'Dei uma olhada no PC: {count} coisa(s) precisam de você (me pede um checkup).',
+    },
     // quem tá no PC (faceid.js)
     face: {
       notOn: 'Liga a câmera primeiro (Câmera e sons › Usar minha câmera) que eu aprendo seu rosto.',
@@ -2927,7 +2939,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

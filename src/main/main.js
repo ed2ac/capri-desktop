@@ -1431,6 +1431,18 @@ function registerIpc() {
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  // her drawings while you're away (renderer art.js): PNGs in her workshop, ~/Capri/desenhos
+  ipcMain.handle('art:save', (_e, url) => {
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(url || ''));
+    if (!m || m[1].length > 4e6) return null;
+    const dir = path.join(tasks.SHOP, 'desenhos');
+    fs.mkdirSync(dir, { recursive: true });
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const file = path.join(dir, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`);
+    fs.writeFileSync(file, Buffer.from(m[1], 'base64'));
+    return file;
+  });
   // her pranks (play.js), only as far as her menu › Mischief allows: the pointer only when 'bold'
   ipcMain.handle('play:prank', async (_e, { kind, arg } = {}) => {
     const level = config.load().pranks || 'light';
