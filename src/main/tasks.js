@@ -33,7 +33,7 @@ const NEVER = [
   'Bash(git push:*)', 'Bash(git push *)', 'Bash(powershell.exe Remove-Item:*)', 'Bash(cmd.exe /c del:*)', 'Bash(cmd.exe /c rd:*)',
 ];
 
-function brief({ lang, persona, project }) {
+function brief({ lang, persona, project, mode = 'default' }) {
   const user = toWsl(HOME);
   return [
     persona,
@@ -41,7 +41,9 @@ function brief({ lang, persona, project }) {
     project
       ? `You are working in the user's folder ${project} (in WSL; /mnt/c/… is their Windows C: drive), as their pair programmer when it's code: read the code, change it, run its tests and builds as needed. Their Windows user folder is ${user}.`
       : `You are doing a task for the user on their PC (Windows, with you running in WSL). Your workshop is ${toWsl(SHOP)}. Their Windows user folder is ${user} (Downloads, Desktop, Pictures, Documents; Documents may be under OneDrive there).`,
-    'Every action that changes something is shown to the user, who allows or denies it: keep each step small and clear, and do exactly what they asked, nothing more.',
+    mode === 'default'
+      ? 'Every action that changes something is shown to the user, who allows or denies it: keep each step small and clear, and do exactly what they asked, nothing more.'
+      : 'Whatever needs permission is shown to the user, who allows or denies it; the rest goes ahead on its own: keep each step clear, and do exactly what they asked, nothing more.',
     `Never delete anything: to remove a file or folder, move it into ${toWsl(TRASH)}/<today's date>/ instead (it stays recoverable). Deleting commands are blocked anyway.`,
     `When asked to make a program or a tool for them, build it as a small self-contained web app in ${toWsl(PROGRAMS)}/<short-name>/: an index.html (styles and scripts inline or in files next to it, no build step, no server, data kept in localStorage), and a capri.json next to it: {"name": "…", "description": "one line"}. It opens in a window of its own from Capri's menu.`,
     'Do not install software system-wide and do not touch system settings unless they asked for exactly that.',
@@ -162,7 +164,7 @@ function parseUsage(text) {
   return rows.length ? { rows, at: Date.now() } : null;
 }
 
-async function run({ id, prompt, lang, persona, gateScript, project = null, resume = null, model = null, onEvent = () => {}, signal }) {
+async function run({ id, prompt, lang, persona, gateScript, project = null, resume = null, model = null, permission = 'auto', onEvent = () => {}, signal }) {
   if (running) return { ok: false, error: 'busy' };
   if (!(await claudeHere())) return { ok: false, error: 'noclaude' };
   for (const dir of [SHOP, PROGRAMS, TRASH]) fs.mkdirSync(dir, { recursive: true });
@@ -170,7 +172,8 @@ async function run({ id, prompt, lang, persona, gateScript, project = null, resu
   fs.mkdirSync(runDir, { recursive: true });
   const promptFile = path.join(runDir, `${id}-brief.txt`);
   const settingsFile = path.join(runDir, `${id}-settings.json`);
-  fs.writeFileSync(promptFile, brief({ lang, persona, project }));
+  const mode = ['auto', 'acceptEdits', 'default'].includes(permission) ? permission : 'auto';
+  fs.writeFileSync(promptFile, brief({ lang, persona, project, mode }));
   fs.writeFileSync(settingsFile, JSON.stringify({
     permissions: { deny: NEVER },
     hooks: { PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: `node ${shq(toWsl(gateScript))}`, timeout: 660 }] }] },
@@ -178,7 +181,7 @@ async function run({ id, prompt, lang, persona, gateScript, project = null, resu
   // the same conversation as last time ("go on", "now make the tests pass"), or a new one
   const session = /^[0-9a-f-]{36}$/.test(resume || '') ? resume : randomUUID();
   const where = project && /^\/[^\0\n\r'"$`\\]+$/.test(project) ? project : toWsl(SHOP);
-  const claude = ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'default',
+  const claude = ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', mode,
     ...(/^(sonnet|opus|haiku)$/.test(model || '') ? ['--model', model] : []),
     '--add-dir', shq(toWsl(HOME)), ...(project ? ['--add-dir', shq(toWsl(SHOP))] : []),
     '--append-system-prompt-file', shq(toWsl(promptFile)),

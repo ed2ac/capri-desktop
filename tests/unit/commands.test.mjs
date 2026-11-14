@@ -57,3 +57,18 @@ test('Claude Code\'s /usage, read', async () => {
   assert.deepEqual(u.rows.map((r) => [r.key, r.pct, r.resets]), [['session', 33, 'Nov 14, 7:19pm'], ['week', 30, 'Nov 15, 10:59am'], ['week:Fable', 0, 'Nov 15, 11am']]);
   assert.equal(parseUsage('nothing here'), null);
 });
+
+test('her offer answered in words ("pode", "continua", "não"), typed or spoken', async () => {
+  const { Hands } = await import(R('hands'));
+  const picked = [];
+  const h = Object.create(Hands.prototype);
+  const offer = (again = false) => { h.pending = { pick: (id) => { picked.push(id); h.pending = null; }, again, until: Date.now() + 60000 }; };
+  offer(); assert.equal(h.spoken('pode!'), 'go');
+  offer(); assert.equal(h.spoken('Capri, sim, faz isso'), 'go');
+  offer(); assert.equal(h.spoken('não, deixa'), 'no');
+  offer(true); assert.equal(h.spoken('continua de onde parou'), 'resume');
+  offer(true); assert.equal(h.spoken('começa do zero'), 'go');
+  offer(); assert.equal(h.spoken('pode abrir o spotify e colocar uma música bem animada agora'), null);
+  assert.equal(h.spoken('pode'), null); // nothing pending any more
+  assert.deepEqual(picked, ['go', 'go', 'no', 'resume', 'go']);
+});

@@ -375,6 +375,14 @@ export class Chat {
     this.turn = id;
     this.answer = '';
     this.history.push({ role: 'user', content: text });
+    // "pode" / "não" to her offer to put Claude on it (typed or said out loud): that's the button
+    const answered = this.hands?.spoken(text);
+    if (answered) {
+      this.panel.chatTurn({ quote: text, face: 'aside' });
+      this.turn = 0;
+      this.panel.stream(answered === 'no' ? this.hands.t.offerDropped || '👍' : '…', { done: true });
+      return;
+    }
     this.panel.setChatBusy(true);
     this.panel.setActions([]); // a close button she offered before goes with a new message
     this.panel.chatTurn({ quote: text, face: 'aside' });

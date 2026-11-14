@@ -104,10 +104,34 @@ export class Hands {
     const buttons = again
       ? [{ id: 'resume', label: t.resume, primary: true }, { id: 'go', label: t.fresh }, { id: 'no', label: t.no }]
       : [{ id: 'go', label: t.start, primary: true }, { id: 'no', label: t.no }];
-    this.chat.panel.setActions(buttons, (id) => {
+    const pick = (id) => {
+      this.pending = null;
       this.chat.panel.setActions([]);
       if (id === 'go' || id === 'resume') this.start(prompt, answer, { project: folder ? null : dir, folder, resume: id === 'resume' ? this.last.session : null });
-    });
+    };
+    // the buttons, or said back in her chat or out loud ("pode", "continua", "não")
+    this.pending = { pick, again, until: Date.now() + 5 * 60000 };
+    this.chat.panel.setActions(buttons, pick);
+  }
+
+  // Your answer to her offer, typed or spoken: 'go' | 'resume' | 'no', or null if it isn't one.
+  spoken(text) {
+    const p = this.pending;
+    if (!p || Date.now() > p.until) return null;
+    const said = String(text).trim().toLowerCase().replace(/[.!?,]+/g, ' ').replace(/^capri\s+/, '').trim();
+    // a whole new message, not an answer: the offer goes, like its buttons
+    if (said.split(/\s+/).length > 6) { this.pending = null; return null; }
+    const no = /^(n[ãa]o|nao|deixa|esquece|cancela|para|melhor n[ãa]o|agora n[ãa]o|no|nope|cancel|never ?mind|not now)(?![\p{L}])/iu;
+    const fresh = /(do zero|come[çc]a de novo|nova|outra conversa|from scratch|start over|new one)/iu;
+    const resume = /(continu|segue|de onde parou|carry on|continue|keep going|resume)/iu;
+    const yes = /^(sim|pode|vai|manda|bora|faz|faça|ok|okay|beleza|claro|isso|certo|come[çc]a|vamos|yes|yeah|yep|sure|go|do it|start)(?![\p{L}])/iu;
+    let id = null;
+    if (no.test(said)) id = 'no';
+    else if (p.again && resume.test(said)) id = 'resume';
+    else if (fresh.test(said) || yes.test(said) || resume.test(said)) id = 'go';
+    if (!id) { this.pending = null; return null; }
+    p.pick(id);
+    return id;
   }
 
   // a command of yours that failed in one of your projects (shell.js): the project, if it's one

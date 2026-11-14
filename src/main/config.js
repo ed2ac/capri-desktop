@@ -50,6 +50,7 @@ const DEFAULTS = {
   lockSnap: false, // a photo of a stranger at the locked PC, in ~/Capri/visitas (lockwatch.js)
   workshopAuto: true, // her coding workshop window opens (in the background) when Claude starts a task
   projectsRoot: '~/dev', // where your code projects are in WSL, for her hands (tasks.js)
+  taskPermission: 'auto', // how much Claude asks during her tasks: 'auto' (it judges what's safe), 'acceptEdits' or 'default' (every step)
   taskModel: 'sonnet', // Claude's model for her tasks: 'sonnet', 'opus', 'auto' (Opus in code projects) or 'default'
   calendarUrl: '',   // your calendar's private ICS address (daily.js): only fetched, never sent anywhere else
   eyeBreaks: false,  // every 20 minutes at the screen, 20 seconds looking far away (breaks.js / daily.js)

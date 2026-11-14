@@ -289,6 +289,7 @@ function rendererConfig() {
 function updateConfig(patch) {
   config.save(patch);
   if ('senseInput' in patch) windowWatch?.sense(patch.senseInput === true);
+  if ('theme' in patch || 'language' in patch) setTimeout(workSend, 0); // her workshop follows her looks
   if ('earOn' in patch || 'wakeWord' in patch) wakeSync();
   if ('watchActivity' in patch) {
     windowWatch?.activity(patch.watchActivity);
@@ -368,7 +369,8 @@ async function startTask({ prompt, lang, persona, project, folder, resume }) {
     if (m === 'auto') return project || folder ? 'opus' : 'sonnet';
     return m === 'default' ? null : m;
   })();
-  work.task = { id, prompt: prompt.slice(0, 4000), dir: listed || named || tasks.SHOP, model: model || 'padrão', startedAt: Date.now(), steps: [] };
+  const permission = ['auto', 'acceptEdits', 'default'].includes(config.load().taskPermission) ? config.load().taskPermission : 'auto';
+  work.task = { id, prompt: prompt.slice(0, 4000), dir: listed || named || tasks.SHOP, model: model || 'padrão', permission, startedAt: Date.now(), steps: [] };
   if (config.load().workshopAuto !== false) openWorkshop({ quiet: true });
   workSend();
   const r = await tasks.run({
@@ -377,6 +379,7 @@ async function startTask({ prompt, lang, persona, project, folder, resume }) {
     resume: typeof resume === 'string' ? resume : null,
     // her menu › Claude's model: Sonnet by default; "auto" takes Opus for your code projects
     model,
+    permission,
     signal: taskAbort.signal,
     onEvent: (e) => {
       workStep(e);
@@ -416,7 +419,7 @@ try { work.history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')).slice(0, 
 let workshopWin = null;
 
 function workState() {
-  return { task: work.task, asks: [...work.asks.values()], history: work.history, usage: work.usage, lang: config.load().language };
+  return { task: work.task, asks: [...work.asks.values()], history: work.history, usage: work.usage, lang: config.load().language, theme: config.load().theme };
 }
 function workSend() {
   workshopWin?.webContents.send('work:state', workState());
@@ -623,7 +626,7 @@ function regroupTray(t, items) {
     [t.groupSenses, [t.activity, t.lookAuto, t.senseInput, t.camera, t.pcReact, t.shellReact, t.pwshInstall, t.pwshRemove]],
     [t.groupBehavior, [t.chatty, t.pranks, t.wander, t.possess, t.jealous, t.closePages, t.aiLines, t.callQuiet, t.obsMode, t.rest]],
     [t.groupHealth, [t.breaks, t.eyeBreaks]],
-    [t.groupAI, [t.chatModel, t.taskModel, t.watch]],
+    [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.watch]],
     [t.groupLooks, [t.size, t.theme, t.motion, t.display, t.sound, t.screen]],
   ];
   const taken = new Set();
@@ -791,6 +794,14 @@ function rebuildTray() {
       submenu: ['sonnet', 'opus', 'auto', 'default'].map((m) => ({
         label: t.taskModels[m], type: 'radio', checked: (cfg.taskModel || 'sonnet') === m,
         click: () => updateConfig({ taskModel: m }),
+      })),
+    },
+    {
+      // how much Claude asks you during her tasks (Claude Code's permission modes)
+      label: t.taskPermission,
+      submenu: ['auto', 'acceptEdits', 'default'].map((m) => ({
+        label: t.taskPermissions[m], type: 'radio', checked: (cfg.taskPermission || 'auto') === m,
+        click: () => updateConfig({ taskPermission: m }),
       })),
     },
     {

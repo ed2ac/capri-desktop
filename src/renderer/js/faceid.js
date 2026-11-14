@@ -14,6 +14,12 @@ import { fmt } from './util.js';
 
 const BASE = new URL('../../../', import.meta.url).href;
 const SAME = 0.5;          // face distance under this: the same person
+const OTHER = 0.62;        // over this: clearly someone else; in between she isn't sure, and keeps what she thought
+const LEARN = 0.42;        // this sure it's you: an angle of your face worth remembering (head down, turned…)
+const DOUBT_MS = 9000;     // someone she doesn't know this long (no match of you meanwhile): a stranger
+const DOUBT_STILL_MS = 45000; // …but if your face never left the picture, it's still you, looking down: much longer
+const MIN_SCORE = 0.7;     // a detection weaker than this, or…
+const MIN_WIDTH = 70;      // …a face smaller than this (px): too poor a look to judge by
 const EVERY = 3000;        // a look at who's there
 const LOCK_AFTER = 25000;  // a stranger this long, nobody let them: locked
 
@@ -116,9 +122,19 @@ export class FaceId {
     const video = this.camera.video;
     if (!video || video.readyState < 2) return [];
     const api = await this.load();
-    const found = await api.detectAllFaces(video, new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+    return (await this.readings()).map((f) => f.d);
+  }
+
+  // the same, with how good a look each one is: [{ d, score, width }]
+  async readings() {
+    const video = this.camera.video;
+    if (!video || video.readyState < 2) return [];
+    const api = await this.load();
+    // a little more eager than its default (dim light, your head down): a weak look still finds you,
+    // and only a good one may say someone's a stranger (tick)
+    const found = await api.detectAllFaces(video, new api.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 }))
       .withFaceLandmarks(true).withFaceDescriptors();
-    return found.map((f) => Array.from(f.descriptor));
+    return found.map((f) => ({ d: Array.from(f.descriptor), score: f.detection.score, width: f.detection.box.width }));
   }
 
   static distance(a, b) {
@@ -129,10 +145,30 @@ export class FaceId {
 
   // who a face is: 'owner', a guest's name, or null
   who(d) {
-    if (!this.known) return null;
-    if (this.known.owner && FaceId.distance(d, this.known.owner.d) < SAME) return 'owner';
-    const g = (this.known.guests || []).map((x) => ({ ...x, dist: FaceId.distance(d, x.d) })).sort((a, b) => a.dist - b.dist)[0];
-    return g && g.dist < SAME ? g.name : null;
+    return this.match(d).who;
+  }
+
+  // { who, dist (to you), guestDist }: you against every angle of yours she knows
+  match(d) {
+    const o = this.known?.owner;
+    const dist = o ? Math.min(...[o.d, ...(o.more || [])].map((x) => FaceId.distance(d, x))) : Infinity;
+    const g = (this.known?.guests || []).map((x) => ({ ...x, dist: FaceId.distance(d, x.d) })).sort((a, b) => a.dist - b.dist)[0];
+    if (dist < SAME && (!g || dist <= g.dist)) return { who: 'owner', dist, guestDist: g?.dist ?? Infinity };
+    if (g && g.dist < SAME) return { who: g.name, dist, guestDist: g.dist };
+    return { who: null, dist, guestDist: g?.dist ?? Infinity };
+  }
+
+  // sure it's you, from an angle she didn't have: remembered (a few, kept encrypted with the rest)
+  learn(d, dist) {
+    const o = this.known?.owner;
+    if (!o || dist >= LEARN) return;
+    const all = [o.d, ...(o.more || [])];
+    if (Math.min(...all.map((x) => FaceId.distance(d, x))) < 0.22) return; // she has this one already
+    o.more = [...(o.more || []), d.map((x) => Math.round(x * 1e5) / 1e5)].slice(-16);
+    if (Date.now() - (this.savedAt || 0) > 2 * 60000) {
+      this.savedAt = Date.now();
+      this.host.faceSave(this.known);
+    }
   }
 
   // ---- learning your face ----
@@ -154,7 +190,9 @@ export class FaceId {
       }
       if (shots.length >= 4) {
         const d = shots[0].map((_, i) => shots.reduce((s, x) => s + x[i], 0) / shots.length);
-        this.known = { ...(this.known || {}), owner: { d: d.map((x) => Math.round(x * 1e5) / 1e5), at: Date.now() }, guests: this.known?.guests || [] };
+        const round = (v) => v.map((x) => Math.round(x * 1e5) / 1e5);
+        // the average, and each look on its own (your face from a few angles)
+        this.known = { ...(this.known || {}), owner: { d: round(d), more: shots.map(round), at: Date.now() }, guests: this.known?.guests || [] };
         await this.host.faceSave(this.known);
         line = fmt(t.enrollDone, { name: this.owner || '' });
       }
@@ -211,14 +249,38 @@ export class FaceId {
     if (!this.camera.on || !this.camera.stream || !this.known?.owner || this.busy) return;
     this.busy = true;
     try {
-      const faces = await this.faces().catch(() => null);
+      const faces = await this.readings().catch(() => null);
       if (!faces) return;
-      const ids = faces.map((d) => ({ d, who: this.who(d) }));
-      if (ids.some((x) => x.who === 'owner')) return this.setState('owner');
-      if (!ids.length) return this.setState('none');
-      const guest = ids.find((x) => x.who && x.who !== 'owner');
-      if (guest) return this.setState('guest', guest.who);
-      this.strangerFace = ids[0].d;
+      const now = Date.now();
+      const ids = faces.map((f) => ({ ...f, ...this.match(f.d) }));
+      const you = ids.filter((x) => x.who === 'owner').sort((a, b) => a.dist - b.dist)[0];
+      if (you) {
+        this.doubt = null;
+        this.ownerAt = now;
+        this.learn(you.d, you.dist);
+        return this.setState('owner');
+      }
+      if (!ids.length) {
+        // the camera sees a face this one couldn't read (dim, turned away): somebody's there, as she thought
+        if (now - (this.camera.lastFaceAt || 0) < 1500) return undefined;
+        this.doubt = null;
+        return this.setState('none');
+      }
+      const guest = ids.find((x) => x.who);
+      if (guest) {
+        this.doubt = null;
+        return this.setState('guest', guest.who);
+      }
+      // a face she doesn't place. Not at once: a poor look, or one only a little off from you, isn't
+      // someone else (your head down, turned, the light); and if your face never left the picture,
+      // nobody took your seat.
+      const best = ids.sort((a, b) => a.dist - b.dist)[0];
+      if (best.score < MIN_SCORE || best.width < MIN_WIDTH || best.dist < OTHER) return undefined; // not sure: as she was
+      this.doubt = this.doubt || { since: now };
+      const seenSince = this.camera.state?.seen || 0; // when the face in the picture appeared (camera.js)
+      const stayed = this.state === 'owner' && seenSince && seenSince <= (this.ownerAt || 0);
+      if (now - this.doubt.since < (stayed ? DOUBT_STILL_MS : DOUBT_MS)) return undefined; // still thinking
+      this.strangerFace = best.d;
       const allowed = this.allowedNow();
       if (allowed) return this.setState('guest', allowed.who);
       return this.setState('stranger');

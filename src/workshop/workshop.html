@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="nightcity">
 <head>
   <meta charset="utf-8">
   <!-- Her coding workshop: what Claude is doing for you, its questions, its history, your plan's use.
@@ -11,54 +11,70 @@
 </head>
 <body>
   <header class="top">
-    <div class="brand"><span class="dot" id="live"></span><h1 data-t="title">Oficina do Claude</h1></div>
+    <div class="brand">
+      <span class="dot" id="live"></span>
+      <div>
+        <p class="label"><span class="who">CAPRI</span><span class="tag">OFICINA</span></p>
+        <h1 data-t="title">Oficina do Claude</h1>
+      </div>
+    </div>
     <div class="meters" id="meters" aria-live="polite"></div>
-    <button class="ghost small" id="refresh" data-t="refresh" title="">Atualizar</button>
+    <button class="btn" id="refresh" data-t="refresh">Atualizar</button>
   </header>
 
   <main class="grid">
     <section class="col main-col">
       <div class="card" id="task-card">
-        <div class="empty" id="idle">
-          <p class="big" data-t="idle">Nenhuma tarefa agora.</p>
-          <p class="muted" data-t="idleHint">Peça no chat dela (“Capri, na pasta site no windows, faça…”) ou escreva aqui embaixo.</p>
-        </div>
-        <div id="task" hidden>
-          <div class="task-head">
-            <p class="prompt" id="prompt"></p>
-            <button class="danger" id="cancel" data-t="cancel">Cancelar</button>
+        <div class="frame"><div class="plate">
+          <p class="label"><span class="who">CLAUDE</span><span class="tag" data-t="taskTag">TAREFA</span><span class="state" id="state"></span></p>
+          <div class="empty" id="idle">
+            <p class="big" data-t="idle">Nenhuma tarefa agora.</p>
+            <p class="muted" data-t="idleHint">Peça no chat dela (“Capri, na pasta site no windows, faça…”) ou escreva aqui embaixo.</p>
           </div>
-          <div class="facts">
-            <button class="chip link" id="dir" title=""></button>
-            <span class="chip" id="model"></span>
-            <span class="chip" id="clock">0:00</span>
-            <span class="chip" id="count"></span>
+          <div id="task" hidden>
+            <div class="task-head">
+              <p class="prompt" id="prompt"></p>
+              <button class="btn danger" id="cancel" data-t="cancel">Cancelar</button>
+            </div>
+            <div class="facts">
+              <button class="chip link" id="dir" title=""></button>
+              <span class="chip" id="model"></span>
+              <span class="chip" id="mode"></span>
+              <span class="chip" id="clock">0:00</span>
+              <span class="chip" id="count"></span>
+            </div>
           </div>
-        </div>
+        </div></div>
       </div>
 
       <div id="asks"></div>
 
       <div class="card log-card">
-        <h2 data-t="steps">Passos</h2>
-        <ol class="log" id="log"></ol>
+        <div class="frame"><div class="plate">
+          <p class="label"><span class="who">CLAUDE</span><span class="tag" data-t="stepsTag">PASSOS</span></p>
+          <ol class="log" id="log"></ol>
+        </div></div>
       </div>
     </section>
 
     <aside class="col side-col">
       <form class="card" id="new">
-        <h2 data-t="newTask">Nova tarefa</h2>
-        <textarea id="ask" rows="4" data-ph="askPh" placeholder="O que o Claude deve fazer?"></textarea>
-        <div class="row">
-          <button type="button" class="ghost" id="pick" data-t="pick">Escolher pasta…</button>
-          <span class="muted small-text" id="picked" data-t="shop">Na oficina dela</span>
-        </div>
-        <button type="submit" class="primary" id="go" data-t="go">Mandar pra Capri</button>
+        <div class="frame"><div class="plate">
+          <p class="label"><span class="who">CAPRI</span><span class="tag" data-t="newTag">NOVA.TAREFA</span></p>
+          <textarea id="ask" rows="4" data-ph="askPh" placeholder="O que o Claude deve fazer?"></textarea>
+          <div class="row">
+            <button type="button" class="btn" id="pick" data-t="pick">Escolher pasta…</button>
+            <span class="muted small-text" id="picked" data-t="shop">Na oficina dela</span>
+          </div>
+          <button type="submit" class="btn primary wide" id="go" data-t="go">Mandar pra Capri</button>
+        </div></div>
       </form>
 
       <div class="card">
-        <h2 data-t="history">Histórico</h2>
-        <ul class="history" id="history"></ul>
+        <div class="frame"><div class="plate">
+          <p class="label"><span class="who">CAPRI</span><span class="tag" data-t="historyTag">HISTÓRICO</span></p>
+          <ul class="history" id="history"></ul>
+        </div></div>
       </div>
     </aside>
   </main>

@@ -14,7 +14,8 @@ const T = {
     asks: 'O Claude quer:', allow: 'Permitir', deny: 'Negar', allowAll: 'Permitir tudo nesta tarefa',
     write: 'Criar {f}', edit: 'Editar {f}', bash: 'Rodar um comando', web: 'Abrir {f}', other: 'Usar {f}',
     steps_n: '{n} passos', busy: 'O Claude já está trabalhando.', model: 'modelo: {m}', secs: '{m} min', running: 'trabalhando…',
-    shownText: 'Claude disse', changes: 'ver mudança',
+    shownText: 'Claude disse', changes: 'ver mudança', taskTag: 'TAREFA', stepsTag: 'PASSOS', newTag: 'NOVA.TAREFA', historyTag: 'HISTÓRICO',
+    working: 'TRABALHANDO', waiting: 'PERMISSÃO', okMark: 'OK', badMark: 'FALHOU', modes: { auto: 'permissões: auto', acceptEdits: 'permissões: edita sozinho', default: 'permissões: pergunta tudo' },
     verbs: { Write: 'CRIA', Edit: 'EDITA', MultiEdit: 'EDITA', NotebookEdit: 'EDITA', Bash: 'RODA', Read: 'LÊ', Glob: 'PROCURA', Grep: 'PROCURA', LS: 'OLHA', WebFetch: 'NAVEGA', WebSearch: 'PESQUISA', TodoWrite: 'PLANEJA', Task: 'DELEGA', Agent: 'DELEGA' },
   },
   en: {
@@ -26,7 +27,8 @@ const T = {
     asks: 'Claude wants to:', allow: 'Allow', deny: 'Deny', allowAll: 'Allow all in this task',
     write: 'Create {f}', edit: 'Edit {f}', bash: 'Run a command', web: 'Open {f}', other: 'Use {f}',
     steps_n: '{n} steps', busy: 'Claude is already working.', model: 'model: {m}', secs: '{m} min', running: 'working…',
-    shownText: 'Claude said', changes: 'see change',
+    shownText: 'Claude said', changes: 'see change', taskTag: 'TASK', stepsTag: 'STEPS', newTag: 'NEW.TASK', historyTag: 'HISTORY',
+    working: 'WORKING', waiting: 'PERMISSION', okMark: 'OK', badMark: 'FAILED', modes: { auto: 'permissions: auto', acceptEdits: 'permissions: edits alone', default: 'permissions: ask all' },
     verbs: { Write: 'WRITE', Edit: 'EDIT', MultiEdit: 'EDIT', NotebookEdit: 'EDIT', Bash: 'RUN', Read: 'READ', Glob: 'FIND', Grep: 'FIND', LS: 'LOOK', WebFetch: 'BROWSE', WebSearch: 'SEARCH', TodoWrite: 'PLAN', Task: 'DELEGATE', Agent: 'DELEGATE' },
   },
 };
@@ -77,7 +79,7 @@ function meters(usage) {
   }
   for (const r of rows.slice(0, 3)) {
     const m = el('div', 'meter');
-    const label = el('div', 'label');
+    const label = el('div', 'm-top');
     label.append(el('span', null, r.key === 'session' ? t.session : r.key === 'week' ? t.week : fmt(t.weekOf, { m: r.label || '' })), el('b', null, `${Math.round(r.pct)}%`));
     const bar = el('div', 'bar');
     const fill = el('i', r.pct >= 90 ? 'high' : r.pct >= 70 ? 'warn' : '');
@@ -111,23 +113,29 @@ function asks(list) {
   for (const g of list) {
     const d = describe(g);
     const card = el('div', 'card ask');
-    card.append(el('h3', null, `${t.asks} ${d.what}`));
-    if (d.path) card.append(el('div', 'muted small-text', d.path));
+    const frame = el('div', 'frame');
+    const plate = el('div', 'plate');
+    frame.append(plate);
+    card.append(frame);
+    const label = el('p', 'label');
+    label.append(el('span', 'who', 'CLAUDE'), el('span', 'tag', g.tool.toUpperCase()), el('span', 'state', t.waiting));
+    plate.append(label, el('h3', null, `${t.asks} ${d.what}`));
+    if (d.path) plate.append(el('div', 'muted small-text', d.path));
     if (d.body.length) {
       const pre = el('pre');
       for (const [cls, text] of d.body) pre.append(el('span', cls, `${text}\n`));
-      card.append(pre);
+      plate.append(pre);
     }
     const row = el('div', 'row');
-    const yes = el('button', 'primary', t.allow);
-    const no = el('button', 'danger', t.deny);
-    const all = el('button', 'ghost', t.allowAll);
+    const yes = el('button', 'btn primary', t.allow);
+    const no = el('button', 'btn danger', t.deny);
+    const all = el('button', 'btn', t.allowAll);
     const done = () => [yes, no, all].forEach((b) => { b.disabled = true; });
     yes.onclick = () => { done(); window.work.answer(g.id, true); };
     no.onclick = () => { done(); window.work.answer(g.id, false); };
     all.onclick = () => { done(); window.work.allowAll(); window.work.answer(g.id, true); };
     row.append(yes, no, all);
-    card.append(row);
+    plate.append(row);
     box.append(card);
   }
 }
@@ -169,6 +177,8 @@ function task(tk) {
   $('dir').title = tk.dir;
   $('dir').onclick = () => window.work.reveal(tk.dir);
   $('model').textContent = fmt(t.model, { m: tk.model });
+  $('mode').textContent = t.modes[tk.permission] || '';
+  $('mode').hidden = !tk.permission;
   const tools = tk.steps.filter((s) => s.kind === 'tool').length;
   $('count').textContent = fmt(t.steps_n, { n: tools });
   // only the new steps: the log keeps its scroll
@@ -193,7 +203,7 @@ function history(list) {
   for (const h of list) {
     const li = el('li');
     const top = el('div', 'h-top');
-    top.append(el('span', `mark ${h.ok ? 'ok' : 'bad'}`, h.ok ? '✓' : '✕'), el('span', 'h-prompt', h.prompt));
+    top.append(el('span', `mark ${h.ok ? 'ok' : 'bad'}`, h.ok ? t.okMark : t.badMark), el('span', 'h-prompt', h.prompt));
     top.title = h.prompt;
     const d = new Date(h.at);
     const meta = el('div', 'h-meta', `${d.toLocaleString(t === T.pt ? 'pt-BR' : 'en', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${fmt(t.secs, { m: Math.max(1, Math.round(h.secs / 60)) })} · ${fmt(t.steps_n, { n: h.steps })} · ${base(h.dir)}`);
@@ -208,6 +218,8 @@ function history(list) {
 function render(s) {
   state = s;
   language(s.lang);
+  document.documentElement.dataset.theme = s.theme === 'classic' ? 'classic' : 'nightcity';
+  $('state').textContent = s.task ? ((s.asks || []).length ? t.waiting : t.working) : '';
   meters(s.usage);
   asks(s.asks || []);
   task(s.task);
