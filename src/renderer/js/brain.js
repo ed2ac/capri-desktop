@@ -1,7 +1,7 @@
 // Turns Claude Code hook events into things Capri says and does.
 
 import { linesFor, ASSISTANT_NAMES } from './lines.js';
-import { pick, fmt, duration, basename, rand } from './util.js';
+import { pick, fmt, duration, basename, rand, inLang } from './util.js';
 
 const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 const HACKING_TOOLS = new Set(['Bash', 'PowerShell', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
@@ -13,6 +13,10 @@ const LONG_JOB_ACTIONS = 50;
 const THINK_AFTER = 15000;
 const THINK_SAY = 40000;
 const THINK_LONG = 120000;
+// a job going on this long: she stops hovering over it and gets on with her own life (life.js),
+// the ticker still showing what Claude does, a word on how it goes now and then, back when it's done
+const ROAM_AFTER = 45000;
+const PROGRESS_EVERY = 4 * 60 * 1000;
 
 export class Brain {
   constructor({ capri, panel, voice, host, mission, lang = 'fr', assistant = 'claude' }) {
@@ -40,6 +44,13 @@ export class Brain {
   }
 
   // the assistant she watches, as she calls it
+  // A line for this moment: from her AI's stock (speech.js) if she has one ready, else a written one
+  line(path) {
+    if (this.speech) return this.speech.line(path);
+    const lines = path.split('.').reduce((o, k) => (o == null ? o : o[k]), this.t);
+    return Array.isArray(lines) ? pick(lines) : lines;
+  }
+
   get name() {
     return this.assistant === 'claude' ? 'Claude' : ASSISTANT_NAMES[this.assistant] || 'Claude';
   }
@@ -118,10 +129,10 @@ export class Brain {
           this.panel.setTicker(null);
           this.capri.setMode('idle');
         }
-        return this.say('info', pick(this.t.interrupted), s, { face: 'wide', hold: 4000 });
+        return this.say('info', this.line('interrupted'), s, { face: 'wide', hold: 4000 });
       case 'SubagentStart': return this.onSubagent(evt, s, true);
       case 'SubagentStop': return this.onSubagent(evt, s, false);
-      case 'PreCompact': return this.say('info', pick(this.t.compact), s, { face: 'aside', hold: 4000 });
+      case 'PreCompact': return this.say('info', this.line('compact'), s, { face: 'aside', hold: 4000 });
       case 'SessionEnd': return this.onSessionEnd(evt, s);
       default: return undefined;
     }
@@ -132,7 +143,7 @@ export class Brain {
     const lines = evt.source === 'resume' ? this.t.resume : this.t.hello;
     this.voice.play('hello');
     this.capri.perform('curious', this.capri.towardCenter());
-    this.say('info', fmt(pick(lines), { project: s.project }), s, { face: pick(['grin', 'look']), hold: 5000 });
+    this.say('info', fmt(this.line(evt.source === 'resume' ? 'resume' : 'hello'), { project: s.project }), s, { face: pick(['grin', 'look']), hold: 5000 });
   }
 
   onPrompt(evt, s) {
@@ -142,7 +153,7 @@ export class Brain {
     this.tally(evt)?.prompt(s.project);
     this.capri.goToWork(); // perched on the window in front if she can, else her corner
     const prompt = String(evt.prompt || '').replace(/\s+/g, ' ').trim();
-    this.say('work', pick(this.t.prompt), s, { quote: prompt ? clip(prompt, 110) : '', hold: 4500 });
+    this.say('work', this.line('prompt'), s, { quote: prompt ? clip(prompt, 110) : '', hold: 4500 });
     this.watchThinking();
   }
 
@@ -174,7 +185,8 @@ export class Brain {
     this.panel.setTicker({ verb: t.verb, target: duration(quiet, this.lang), thinking: true });
 
     const now = performance.now();
-    if (now > th.fidget && !this.capri.stowed) {
+    if (this.roams(s)) this.roam(s);
+    else if (now > th.fidget && !this.capri.stowed) {
       th.fidget = now + rand(9000, 16000);
       // once in a long think she looks up at the satellite; otherwise a little something
       const gazed = !th.gazed && quiet > 25000 && this.capri.gaze({ big: false });
@@ -183,12 +195,80 @@ export class Brain {
     }
     if (th.said < 1 && quiet >= THINK_SAY) {
       th.said = 1;
-      this.say('work', pick(t.hmm), s, { face: 'aside', hold: 4000 });
+      this.say('work', this.line('thinking.hmm'), s, { face: 'aside', hold: 4000 });
     }
     if (th.said < 2 && quiet >= THINK_LONG) {
       th.said = 2;
-      this.say('info', pick(t.long), s, { face: 'smug', quote: t.longHow, hold: 8000 });
+      this.say('info', this.line('thinking.long'), s, { face: 'smug', quote: t.longHow, hold: 8000 });
     }
+  }
+
+  // Has this job gone on long enough for her to roam? (not while it needs you)
+  roams(s) {
+    return Boolean(s?.working && s.taskStart && !s.waiting && Date.now() - s.taskStart > ROAM_AFTER);
+  }
+
+  // Off to her own life while it works: once, she lets go of her work pose; then every few minutes,
+  // a word (her local AI) on how it's going.
+  roam(s) {
+    if (!s.roaming) {
+      s.roaming = true;
+      s.progressAt = Date.now();
+      if (this.capri.mode === 'work') this.capri.setMode('idle');
+    }
+    if (Date.now() - s.progressAt > PROGRESS_EVERY && this.host?.localSay && this.chat) {
+      s.progressAt = Date.now();
+      this.progress(s);
+    }
+  }
+
+  async progress(s) {
+    const steps = (s.log || []).slice(-8).map((a) => `- ${a.verb} ${a.target}${a.error ? ' (failed)' : ''}`).join('\n');
+    const prompt = [
+      `${this.name} (the user's coding AI) has been working on their project "${s.project}" for ${Math.round((Date.now() - s.taskStart) / 60000)} minutes: ${s.count} actions, ${s.files.size} files changed${s.errors ? `, ${s.errors} failed commands` : ''}. Its last steps:`,
+      steps,
+      'Say one short sentence about how it is going, in character, to the user (a tease, a cheer, a worry).',
+      this.chat.languageNote(),
+    ].join('\n');
+    const res = await this.inHerLanguage(prompt, 90);
+    if (!res || !s.working || this.capri.mode === 'alert') return;
+    this.say('work', String(res.text).replace(/[*_`#]+/g, '').replace(/^["“«]\s*|\s*["”»]$/g, '').trim(), s, { face: 'smug', hold: 5000 });
+  }
+
+  // Her local AI, in her language: the note on her language first and last (a prompt full of file
+  // names and commands pulls a small model into English), and once more if it slipped anyway.
+  async inHerLanguage(prompt, maxTokens) {
+    const note = this.chat.languageNote();
+    for (let i = 0; i < 2; i++) {
+      const res = await this.host.localSay({ persona: this.chat.lookPersona(), prompt: `${note}\n${prompt}\n${note}${i ? ` ${note}` : ''}`, maxTokens }).catch(() => null);
+      if (res?.ok && inLang(res.text, this.lang)) return res;
+    }
+    return null;
+  }
+
+  // When it's done: her take on what it did and how it all went (her local AI), after her usual
+  // celebration; held until you're back on Claude's window if she's holding up its answer for you.
+  async review(evt, s) {
+    if (!this.host?.localSay || !this.chat || evt.demo || !s.taskStart) return;
+    const ms = Date.now() - s.taskStart;
+    if (ms < 20000 && s.count < 3) return; // a quick back-and-forth: nothing to say
+    const files = [...s.files].slice(0, 8).map((f) => basename(f)).join(', ');
+    const steps = (s.log || []).slice(-8).map((a) => `- ${a.verb} ${a.target}${a.error ? ' (failed)' : ''}`).join('\n');
+    const answer = cleanMarkdown(evt.last_assistant_message || '').slice(0, 700);
+    const prompt = [
+      `${this.name} (the user's coding AI) just finished a job in their project "${s.project}": ${Math.round(ms / 60000) || 1} min, ${s.count} actions${files ? `, files changed: ${files}` : ''}${s.errors ? `, ${s.errors} failed commands along the way` : ''}.`,
+      steps ? `Its last steps:\n${steps}` : '',
+      answer ? `What it said at the end: "${answer}"` : '',
+      'Give your take, in character, talking to the user: what it actually got done, whether it went smoothly, how the project is looking. Two short sentences, plain text, no list.',
+      this.chat.languageNote(),
+    ].filter(Boolean).join('\n');
+    const res = await this.inHerLanguage(prompt, 140);
+    if (!res) return;
+    const line = String(res.text).replace(/[*_`#]+/g, '').replace(/^["“«]\s*|\s*["”»]$/g, '').trim();
+    if (!line) return;
+    const show = () => this.say('info', line, s, { face: 'smug', badge: this.t.badges?.review || 'REVIEW', hold: Math.min(14000, 4000 + line.length * 50) });
+    if (this.replyFor === s) this.afterReply = show; // her answer-holding panel first
+    else setTimeout(show, 9000);
   }
 
   onTool(evt, s) {
@@ -206,21 +286,23 @@ export class Brain {
         for (const edited of evt.tool_input.file_paths) if (typeof edited === 'string') s.files.add(edited);
       }
     }
-    if (this.capri.mode !== 'alert') this.capri.setMode('work');
+    if (this.capri.mode !== 'alert' && !this.roams(s)) this.capri.setMode('work');
+    else if (this.roams(s)) this.roam(s);
     this.capri.pulse();
     if (HACKING_TOOLS.has(evt.tool_name)) this.capri.spark(); // red sparks: she's in the system
     this.panel.setTicker(action);
     if (this.panel.current?.kind === 'work') this.panel.updateLog(s.log);
     if (s.count % WORKING_EVERY === 0) {
-      this.say('work', fmt(pick(this.t.working), { count: s.count }), s, { log: s.log, hold: 4000 });
+      this.say('work', fmt(this.line('working'), { count: s.count }), s, { log: s.log, hold: 4000 });
     }
   }
 
   onToolFailure(evt, s) {
+    s.errors = (s.errors || 0) + 1;
     const action = { ...this.describe(evt), error: true };
     s.log.push(action);
     if (evt.is_interrupt) {
-      this.say('info', pick(this.t.interrupted), s, { face: 'wide', hold: 4000 });
+      this.say('info', this.line('interrupted'), s, { face: 'wide', hold: 4000 });
       return;
     }
     // "Exit code 1" says nothing; the next line usually does
@@ -229,7 +311,7 @@ export class Brain {
     this.tally(evt)?.error();
     this.capri.hurt();
     this.voice.play('error');
-    this.say('error', fmt(pick(this.t.error), { tool: evt.tool_name || this.t.someTool }), s, {
+    this.say('error', fmt(this.line('error'), { tool: evt.tool_name || this.t.someTool }), s, {
       face: pick(['laugh', 'wide']), // a failure: she laughs at the chaos, or it caught her off guard
       log: [action, { verb: '✕', target: clip(firstLine, 70), error: true }],
       hold: 5500,
@@ -247,12 +329,12 @@ export class Brain {
       const win = this.away(s) && this.capri.windows.wins.find((w) => w.id === s.window);
       if (win && this.capri.canPoint(win)) {
         const quote = [this.t.guide.permissionThere, evt.message].filter(Boolean).join('\n');
-        this.say('alert', pick(this.t.permission), s, { quote, hold: null });
+        this.say('alert', this.line('permission'), s, { quote, hold: null });
         s.pointedAt = await this.capri.pointAt(win, { label: this.t.guide.labels.claude });
         if (!s.waiting && s.pointedAt) this.capri.stopPointing(); // answered while she was on her way
         return;
       }
-      this.say('alert', pick(this.t.permission), s, { quote: evt.message || '', hold: null });
+      this.say('alert', this.line('permission'), s, { quote: evt.message || '', hold: null });
       // next to your pointer, even on another screen
       const near = await this.capri.toPointer(await this.host.cursor().catch(() => null));
       const toward = near?.inside ? Math.sign(near.x - this.capri.pos.x) || 1 : this.capri.towardCenter();
@@ -261,7 +343,7 @@ export class Brain {
     }
     if (type === 'idle_prompt') {
       this.voice.play('tick');
-      this.say('info', pick(this.t.waiting), s, { face: 'smug', hold: 6000 });
+      this.say('info', this.line('waiting'), s, { face: 'smug', hold: 6000 });
       return;
     }
     if (evt.message) this.say('info', evt.message, s, { hold: 5000 });
@@ -291,8 +373,8 @@ export class Brain {
     const reply = this.away(s) ? readable(evt.last_assistant_message || '') : '';
     const done = (extra) => {
       if (reply) this.replyFor = s;
-      if (reply) this.say('done', pick(this.t.reply), s, { ...extra, reply, hold: null });
-      else this.say('done', pick(this.t.done), s, { ...extra, quote: clip(quote, 150) });
+      if (reply) this.say('done', this.line('reply'), s, { ...extra, reply, hold: null });
+      else this.say('done', this.line('done'), s, { ...extra, quote: clip(quote, 150) });
     };
     if (!wasWorking && !s.count) {
       // a Stop with nothing before it: just say it quietly
@@ -306,6 +388,7 @@ export class Brain {
     if (bigJob) await this.capri.teleport(this.capri.spot('stage'));
     // the panel comes in once she's back down from her victory pose
     this.capri.celebrate({ onSpeak: () => done({ summary, hold: 14000 }) });
+    this.review(evt, s);
     // a long one: she'll send the red light up to the satellite once it's all quiet
     if ((s.taskStart && Date.now() - s.taskStart >= LONG_JOB_MS) || s.count >= LONG_JOB_ACTIONS) this.capri.earnUplink();
   }
@@ -323,6 +406,9 @@ export class Brain {
     if (!s || fg !== s.window) return;
     this.replyFor = null;
     if (this.panel.current?.reply) this.panel.hide();
+    const after = this.afterReply;
+    this.afterReply = null;
+    if (after) setTimeout(after, 1200);
   }
 
   onStopFailure(evt, s) {
@@ -334,7 +420,7 @@ export class Brain {
     this.capri.hurt();
     this.voice.play('error');
     const detail = evt.error || evt.message || '';
-    this.say('error', pick(this.t.crashed), s, { face: 'wide', quote: clip(String(detail), 120), hold: 9000 });
+    this.say('error', this.line('crashed'), s, { face: 'wide', quote: clip(String(detail), 120), hold: 9000 });
   }
 
   onSubagent(evt, s, starting) {
@@ -351,7 +437,7 @@ export class Brain {
       this.panel.setTicker(null);
       this.capri.setMode('idle');
     }
-    this.say('info', fmt(pick(this.t.bye), { project: s.project }), s, { face: 'aside', hold: 4000 });
+    this.say('info', fmt(this.line('bye'), { project: s.project }), s, { face: 'aside', hold: 4000 });
   }
 
   // Something to say with nothing going on: one of your lines half the time, if you wrote some, and
@@ -359,7 +445,7 @@ export class Brain {
   idleLine() {
     const mine = this.custom.myLines || [];
     const close = this.t.bond.idle[this.bond?.stage || 0] || [];
-    let line = pick(this.t.idle);
+    let line = this.line('idle');
     if (mine.length && Math.random() < 0.5) line = pick(mine);
     else if (close.length && Math.random() < 0.4) line = pick(close);
     return fmt(line, { name: this.custom.userName || 'choom' });
@@ -369,9 +455,9 @@ export class Brain {
   // knows you a little), else with your name, if she knows it.
   onlineLine() {
     const away = this.bond?.away || 0;
-    if (away >= 2 && this.bond.stage >= 1) return fmt(pick(this.t.bond.missed), { days: away });
+    if (away >= 2 && this.bond.stage >= 1) return fmt(this.line('bond.missed'), { days: away });
     const name = this.custom.userName;
-    return name ? fmt(pick(this.t.custom.onlineName), { name }) : pick(this.t.online);
+    return name ? fmt(pick(this.t.custom.onlineName), { name }) : this.line('online');
   }
 
   // What she says when you click her. Nothing going on: she offers to talk (chat.js).

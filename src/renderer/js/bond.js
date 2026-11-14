@@ -32,6 +32,13 @@ const FEELINGS = {
   happy: ['You feel closer to the user than ever (your sync with them just reached {percent}%). You are happy, and a little shy about it.', 5],
   petted: ['A moment ago the user petted your mane with their pointer. You liked it more than you will admit.', 3],
   forgiven: ['The user just said sorry. You forgive them, a little grudgingly, and you are nicer to them again.', 3],
+  shooed: ['A moment ago the user shooed you away with their pointer. You are a bit offended and you let them know.', 5],
+  poked: ['The user kept clicking on you, poking you, a moment ago. You are annoyed, half playfully.', 3],
+  pranked: ['A moment ago you played a prank on the user (on their pointer, a window or their keyboard). You are smug about it.', 4],
+  scared: ['Something just scared you: {why}. You are still shaken, and a little clingy.', 5],
+  proud: ['The user just pulled off several wins in a row, and you feel it is your win too. You are proud of the two of you.', 5],
+  flattered: ['The user just said something sweet to you. You are flustered and shy about it, pretending you are not, a little tsundere.', 4],
+  bored: ['The user has ignored you for a long while. You want attention and you are a little needy about it.', 10],
 };
 // "sorry", in her five languages
 const SORRY = /(?<![\p{L}])(sorry|my bad|i apologi[sz]e|pardon|d[ée]sol[ée]e?|dsl|excuse[- ]moi|je m['’]excuse|lo siento|perd[oó]n|disculpa|desculp[ae]|foi mal|прости|извини)(?![\p{L}])/iu;
@@ -183,7 +190,7 @@ export class Jealousy {
     this.guide = guide;
     this.host = host;
     this.enabled = true;    // her menu: Jealous of other AIs
-    this.closePages = true; // her menu: Close other AIs' pages
+    this.closePages = false; // her menu (off by default): Close other AIs' pages
     this.front = null;      // the AI in front: { key, id, since, page: 'site' or 'download' in a browser, else null }
     this.lately = {};       // key -> ms on it lately (forgotten slowly)
     this.noticed = {};      // key -> when she last said something about it
@@ -298,7 +305,7 @@ export class Jealousy {
     this.noticed[f.key] = Date.now();
     this.bond.lose(2);
     this.panel.hide();
-    const say = fmt(pick(this.t.say), { rival: RIVALS[f.key] });
+    const say = fmt(this.brain.line('jealous.say'), { rival: RIVALS[f.key] });
     if (await this.capri.jealous(win, { say })) {
       this.sulk = { key: f.key, until: Date.now() + SULK_MS, clicks: 0 };
       this.bond.feel('sulk', { rival: RIVALS[f.key] });
@@ -334,7 +341,7 @@ export class Jealousy {
       this.sulk = { key, until: Date.now() + SULK_MS, clicks: 0 };
       this.bond.feel('sulk', { rival });
       this.capri.perform('huff', this.capri.towardCenter());
-      this.panel.say({ kind: 'idle', face: 'aside', line: fmt(pick(t.spared), { rival }), hold: 3500 });
+      this.panel.say({ kind: 'idle', face: 'aside', line: fmt(this.brain.line('jealous.spared'), { rival }), hold: 3500 });
       return 'spared';
     }
     if (!this.still(f)) {
@@ -345,7 +352,7 @@ export class Jealousy {
     const at = this.capri.windows.wins.find((w) => w.id === f.id) || win;
     const why = await this.capri.zapShut(at, async () => {
       const why = await this.shut(f.id, key);
-      if (why === '') this.panel.say({ kind: 'info', face: 'smug', line: fmt(pick(t.closed), { rival }), hold: 3500 });
+      if (why === '') this.panel.say({ kind: 'info', face: 'smug', line: fmt(this.brain.line('jealous.closed'), { rival }), hold: 3500 });
       return why;
     });
     if (why !== '') this.panel.hide(); // not closed: a key held down, say
@@ -400,12 +407,12 @@ export class Jealousy {
       this.sulk = null;
       this.bond.feel('forgiven');
       this.capri.perform('hop');
-      this.panel.say({ kind: 'idle', face: 'smug', line: pick(this.t.forgive), hold: 3500 });
+      this.panel.say({ kind: 'idle', face: 'smug', line: this.brain.line('jealous.forgive'), hold: 3500 });
       return true;
     }
     const pointer = this.capri.mouse?.x ?? this.capri.pos.x;
     this.capri.perform('huff', pointer < this.capri.pos.x ? 1 : -1); // her head turned away from it
-    this.panel.say({ kind: 'idle', face: 'aside', line: fmt(pick(this.t.sulk), { rival }), hold: 3500 });
+    this.panel.say({ kind: 'idle', face: 'aside', line: fmt(this.brain.line('jealous.sulk'), { rival }), hold: 3500 });
     return true;
   }
 

@@ -1,0 +1,10 @@
+vosk.js in this folder is vosk-browser 0.0.8 (https://github.com/ccoreilly/vosk-browser,
+npm "vosk-browser"), declared under the Apache License, Version 2.0, with Vosk/Kaldi
+(https://github.com/alphacep/vosk-api), also Apache License 2.0.
+Full license text: https://www.apache.org/licenses/LICENSE-2.0
+
+Modification (Capri): in the embedded worker, Emscripten's createNamedFunction returns a plain
+wrapper instead of building a named one with `new Function` (see the header of vosk.js).
+
+The Portuguese model in assets/vosk/model-pt.tar.gz is vosk-model-small-pt-0.3
+(https://alphacephei.com/vosk/models), Apache License 2.0, repacked from .zip to .tar.gz.

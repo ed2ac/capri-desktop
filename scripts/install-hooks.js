@@ -52,7 +52,52 @@ function hookCommand() {
   if (process.versions.electron && !hasNode()) {
     return `ELECTRON_RUN_AS_NODE=1 "${process.execPath.replace(/\\/g, '/')}" "${script}"`;
   }
+  // In WSL, node often comes from a version manager (nvm, fnm) that only a login shell puts on the
+  // PATH, and Claude Code started from VS Code may not have it: the full path always works.
+  if (IN_WSL) return `"${fs.realpathSync(process.execPath)}" "${script}"`;
   return `node "${script}"`;
+}
+
+// ---- Claude Code in WSL, Capri on Windows ----
+// The hooks go in WSL's ~/.claude; a small note in the Windows user folder tells the Windows app
+// where they are, so her menu shows them as installed and can take them out again.
+const IN_WSL = process.platform === 'linux'
+  && (Boolean(process.env.WSL_DISTRO_NAME) || /microsoft/i.test(os.release()));
+const NOTE = '.capri-wsl-hooks.json';
+
+function windowsHome() { // from WSL: /mnt/c/Users/<you>
+  try {
+    const r = spawnSync('cmd.exe', ['/d', '/c', 'echo %USERPROFILE%'], { encoding: 'utf8', timeout: 5000, cwd: '/mnt/c' });
+    const win = (r.stdout || '').trim();
+    if (!/^[A-Za-z]:\\/.test(win)) return null;
+    return spawnSync('wslpath', ['-u', win], { encoding: 'utf8' }).stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNote(file) {
+  const home = windowsHome();
+  if (!home) return null;
+  const distro = process.env.WSL_DISTRO_NAME || 'Ubuntu';
+  // what the Windows side reads it as: \\wsl.localhost\<distro>\home\<you>\.claude\settings.json
+  const unc = `\\\\wsl.localhost\\${distro}${file.replace(/\//g, '\\')}`;
+  fs.writeFileSync(path.join(home, NOTE), JSON.stringify({ distro, file: unc, linuxFile: file }, null, 2) + '\n');
+  return path.join(home, NOTE);
+}
+
+function removeNote() {
+  const home = windowsHome();
+  if (home) fs.rmSync(path.join(home, NOTE), { force: true });
+}
+
+function readNote() { // on Windows
+  if (process.platform !== 'win32') return null;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(os.homedir(), NOTE), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function readSettings(file) {
@@ -106,11 +151,11 @@ function install() {
     });
   }
   if (JSON.stringify(settings) !== before) write(file, settings); // already up to date: no backup spam
-  return { file, command, events: EVENTS.length };
+  const note = IN_WSL ? writeNote(file) : null;
+  return { file, command, events: EVENTS.length, note };
 }
 
-function uninstall() {
-  const file = settingsPath();
+function uninstallAt(file) {
   if (!fs.existsSync(file)) return { file, removed: false };
   const settings = readSettings(file);
   const before = JSON.stringify(settings);
@@ -120,8 +165,23 @@ function uninstall() {
   return { file, removed };
 }
 
-function status() {
-  const file = settingsPath();
+function uninstall() {
+  const native = uninstallAt(settingsPath());
+  if (IN_WSL) removeNote();
+  const note = readNote(); // on Windows: the hooks are in WSL, take them out there
+  if (!native.removed && note) {
+    try {
+      const r = uninstallAt(note.file);
+      fs.rmSync(path.join(os.homedir(), NOTE), { force: true });
+      return r;
+    } catch {
+      return native;
+    }
+  }
+  return native;
+}
+
+function statusAt(file) {
   try {
     const settings = readSettings(file);
     const events = Object.entries(settings.hooks || {})
@@ -131,6 +191,16 @@ function status() {
   } catch (err) {
     return { file, installed: false, events: [], error: err.message };
   }
+}
+
+function status() {
+  const native = statusAt(settingsPath());
+  if (native.installed) return native;
+  // on Windows, with the hooks installed from WSL: trust the note (reading \\wsl.localhost
+  // would wake WSL up just to draw her menu)
+  const note = readNote();
+  if (note?.file) return { file: note.file, installed: true, events: EVENTS, wsl: note.distro };
+  return native;
 }
 
 module.exports = { install, uninstall, status, EVENTS };
@@ -148,6 +218,11 @@ if (require.main === module) {
       const r = install();
       console.log(`Capri hooks installed for ${r.events} events in ${r.file}`);
       console.log(`Command: ${r.command}`);
+      if (IN_WSL) {
+        console.log(r.note
+          ? `WSL: Capri on Windows will see these hooks (note written to ${r.note}).`
+          : 'WSL: could not find your Windows user folder; the hooks work, but her menu on Windows will not show them as installed.');
+      }
       console.log('Start a new Claude Code session for them to take effect.');
     }
   } catch (err) {

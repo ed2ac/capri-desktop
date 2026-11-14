@@ -43,8 +43,7 @@ export function duration(ms, lang = 'fr') {
 export const basename = (p = '') => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
 
 // the local date, YYYY-MM-DD
-export const today = () => {
-  const d = new Date();
+export const today = (d = new Date()) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
@@ -69,4 +68,21 @@ export function tween(target, to, ms, easing = ease.out) {
     };
     requestAnimationFrame(tick);
   });
+}
+
+// Does a line look like it's in her language? Small models slip into English now and then: a line
+// with more English words than words of her language (and a few of them) is taken as English.
+const WORDS = {
+  en: /\b(the|you|your|you're|is|are|and|what|it's|i'm|i|am|my|this|with|that|don't|can't|just|so|of|to|be|was|have|now|right|really|very|we|they|will|can|get|got|like|how|why|when|here|there|for|on|at|in|if|all|out|about|let's|gonna|back|welcome|look|yeah|done|good|great|again|still|never|ever|too|off|over|time)\b/gi,
+  pt: /\b(você|vc|não|que|tá|pra|isso|meu|minha|com|uma|um|de|do|da|é|eu|seu|sua|tô|aqui|mais|como|nós|a gente|muito|bom|boa|seus|suas|olha|esse|essa|esses|essas|ele|ela|tudo|nada|hoje|agora)\b|[ãõçêáéíóúâ]/gi,
+  es: /\b(tú|usted|que|qué|con|una|un|de|del|el|la|es|yo|tu|aquí|más|cómo|estás|pero)\b|[ñ¿¡]/gi,
+  fr: /\b(tu|vous|que|qui|avec|une|un|de|du|le|la|les|est|je|ton|ta|ici|plus|comme|mais|pas)\b|[àèùç]/gi,
+};
+export function inLang(text, lang) {
+  if (!WORDS[lang] || lang === 'en') return true;
+  if (lang === 'ru') return /[а-яё]/i.test(text) || !WORDS.en.test(text);
+  const en = (String(text).match(WORDS.en) || []).length;
+  const own = (String(text).match(WORDS[lang]) || []).length;
+  // more English than her language, or English and nothing of hers at all
+  return !((en >= 2 && en > own) || (en >= 1 && own === 0));
 }

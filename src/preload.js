@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const on = (channel) => (fn) => {
   const listener = (_e, payload) => fn(payload);
@@ -10,6 +10,8 @@ const on = (channel) => (fn) => {
 
 contextBridge.exposeInMainWorld('host', {
   onClaudeEvent: on('claude:event'),
+  onShellEvent: on('shell:event'),
+  onDownload: on('guard:download'),
   onCommand: on('capri:command'),
   onConfig: on('capri:config'),
   onResize: on('overlay:resize'),
@@ -34,6 +36,7 @@ contextBridge.exposeInMainWorld('host', {
   openClaudeFolder: () => ipcRenderer.invoke('guide:claudeFolder'),
   copyImage: (rect) => ipcRenderer.invoke('panel:copy', rect),
   chatStatus: () => ipcRenderer.invoke('chat:status'),
+  chatModels: () => ipcRenderer.invoke('chat:models'),
   chatSend: (request) => ipcRenderer.invoke('chat:send', request),
   chatStop: (id) => ipcRenderer.send('chat:stop', id),
   chatMemory: () => ipcRenderer.invoke('chat:memory'),
@@ -42,10 +45,41 @@ contextBridge.exposeInMainWorld('host', {
   lookSnap: () => ipcRenderer.invoke('look:snap'),
   lookSay: (request) => ipcRenderer.invoke('look:say', request),
   lookWhere: () => ipcRenderer.invoke('look:where'),
+  activitySay: (request) => ipcRenderer.invoke('activity:say', request),
+  localSay: (request) => ipcRenderer.invoke('local:say', request),
+  localPause: (on) => ipcRenderer.invoke('local:pause', Boolean(on)),
+  prank: (kind, arg) => ipcRenderer.invoke('play:prank', { kind, arg }),
+  taskStart: (req) => ipcRenderer.invoke('task:start', req),
+  weather: (city, lang) => ipcRenderer.invoke('daily:weather', { city, lang }),
+  readClip: () => ipcRenderer.invoke('clip:read'),
+  writeClip: (text) => ipcRenderer.send('clip:write', text),
+  shotSay: (req) => ipcRenderer.invoke('shot:say', req),
+  onMedia: on('daily:media'),
+  onShot: on('daily:shot'),
+  taskCancel: () => ipcRenderer.send('task:cancel'),
+  taskProjects: () => ipcRenderer.invoke('task:projects'),
+  heartLabel: (label) => ipcRenderer.send('heart:label', label),
+  handFile: (file) => ipcRenderer.invoke('file:hand', file),
+  calendar: (hours) => ipcRenderer.invoke('calendar:upcoming', hours),
+  onObs: on('pc:obs'),
+  onSense: on('pc:sense'),
+  cameraWhere: () => ipcRenderer.invoke('camera:where'),
+  cameraLook: (req) => ipcRenderer.invoke('camera:look', req),
+  transcribe: (audio, lang) => ipcRenderer.invoke('mic:transcribe', { audio, lang }),
+  lookFile: (req) => ipcRenderer.invoke('file:look', req),
+  pathOf: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
+  onTaskEvent: on('task:event'),
+  onGateAsk: on('gate:ask'),
+  onGateGone: on('gate:gone'),
+  gateAnswer: (id, allow, reason) => ipcRenderer.send('gate:answer', { id, allow, reason }),
+  daysGet: () => ipcRenderer.invoke('days:get'),
+  daysSave: (data) => ipcRenderer.send('days:save', data),
   cpu: () => ipcRenderer.invoke('pc:cpu'),
   pcDo: (req) => ipcRenderer.invoke('pc:do', req),
   onPcProgress: on('pc:progress'),
   pcIdle: () => ipcRenderer.invoke('pc:idle'),
+  lockPc: () => ipcRenderer.invoke('pc:lock'),
+  wakePause: (on) => ipcRenderer.send('wake:pause', Boolean(on)),
   openOllama: () => ipcRenderer.send('chat:ollama'),
   setupInfo: () => ipcRenderer.invoke('setup:info'),
   ollamaState: () => ipcRenderer.invoke('setup:ollama'),

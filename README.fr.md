@@ -1,4 +1,4 @@
-[English](README.md) · **Français**
+[English](README.md) · **Français** · [Português (Brasil)](README.pt-BR.md)
 
 # Capri
 

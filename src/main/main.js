@@ -6,9 +6,10 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer,
+  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer, session,
 } = require('electron');
 const { randomUUID } = require('node:crypto');
+const { execFile } = require('node:child_process');
 
 const config = require('./config');
 const { TRAY, LANGS } = require('./labels');
@@ -287,6 +288,12 @@ function rendererConfig() {
 
 function updateConfig(patch) {
   config.save(patch);
+  if ('senseInput' in patch) windowWatch?.sense(patch.senseInput === true);
+  if ('earOn' in patch || 'wakeWord' in patch) wakeSync();
+  if ('watchActivity' in patch) {
+    windowWatch?.activity(patch.watchActivity);
+    followDay(patch.watchActivity === true);
+  }
   if ('rest' in patch) {
     fitOverlay(); // the taskbar in her window or not
     windowWatch?.refresh();
@@ -295,6 +302,226 @@ function updateConfig(patch) {
   overlay?.webContents.send('capri:config', cfg);
   rebuildTray();
   return cfg;
+}
+
+// What's playing and the screenshots you take, for her to talk about: only while "Comment on what I
+// do" is on, and only to her local model (daily.js)
+let dayWatch = null;
+const shotFiles = new Set();
+function followDay(on) {
+  if (!on) {
+    dayWatch?.forEach((stop) => stop());
+    dayWatch = null;
+    return;
+  }
+  if (dayWatch) return;
+  const daily = require('./daily');
+  dayWatch = [
+    daily.watchMedia((m) => overlay?.webContents.send('daily:media', m)),
+    daily.watchScreenshots((file) => {
+      shotFiles.add(file);
+      overlay?.webContents.send('daily:shot', { file });
+    }),
+  ];
+}
+
+// ---- Her hands (tasks.js): Claude Code doing what you asked her, every step by your leave ----
+const tasks = require('./tasks');
+const GATE_SCRIPT = path.join(__dirname, '..', '..', 'hooks', 'capri-gate.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+const gates = new Map(); // id -> resolve({ allow, reason })
+let taskAbort = null;
+
+// Claude Code asks (hooks/capri-gate.js): she asks you, and this waits for your click (10 minutes at most)
+function askGate(evt) {
+  if (!tasks.isTaskSession(evt.session_id)) return Promise.resolve({ allow: false, reason: 'Not one of Capri\'s tasks.' });
+  const id = randomUUID();
+  return new Promise((resolve) => {
+    gates.set(id, resolve);
+    overlay?.webContents.send('gate:ask', { id, tool: String(evt.tool_name || ''), input: evt.tool_input || {} });
+    setTimeout(() => {
+      if (!gates.has(id)) return;
+      gates.delete(id);
+      overlay?.webContents.send('gate:gone', { id });
+      resolve({ allow: false, reason: 'Nobody answered in time.' });
+    }, 10 * 60 * 1000);
+  });
+}
+
+async function startTask({ prompt, lang, persona, project, resume }) {
+  if (typeof prompt !== 'string' || !prompt.trim()) return { ok: false, error: 'empty' };
+  taskAbort = new AbortController();
+  const id = randomUUID();
+  const r = await tasks.run({
+    id, prompt: prompt.slice(0, 4000), lang: String(lang || 'English'), persona: String(persona || ''), gateScript: GATE_SCRIPT,
+    project: (await tasks.projects(config.load().projectsRoot)).find((p) => p.dir === project)?.dir || null,
+    resume: typeof resume === 'string' ? resume : null,
+    // her menu › Claude's model: Sonnet by default; "auto" takes Opus for your code projects
+    model: (() => {
+      const m = config.load().taskModel || 'sonnet';
+      if (m === 'auto') return project ? 'opus' : 'sonnet';
+      return m === 'default' ? null : m;
+    })(),
+    signal: taskAbort.signal, onEvent: (e) => overlay?.webContents.send('task:event', e),
+  });
+  taskAbort = null;
+  rebuildTray(); // a new program may be there
+  return r;
+}
+
+// A program from her workshop, in a window of its own: a web page, nothing more (no Node, sandboxed)
+function openProgram(p) {
+  const win = new BrowserWindow({
+    width: 1000, height: 720, title: p.name, autoHideMenuBar: true, backgroundColor: '#14101c',
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `persist:capri-program-${path.basename(p.dir)}` },
+  });
+  const inside = (url) => url.startsWith(pathToFileURL(p.dir).href);
+  win.webContents.on('will-navigate', (e, url) => {
+    if (inside(url)) return;
+    e.preventDefault();
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.loadFile(p.page);
+}
+
+// ---- Files you hand her: Send to › Capri, or dropped on her chat (renderer inbox.js) ----
+const TEXTISH = /\.(txt|md|markdown|csv|tsv|json|jsonl|xml|html?|css|js|mjs|cjs|ts|tsx|jsx|py|rb|go|rs|java|kt|c|cc|cpp|h|hpp|cs|php|sh|bash|ps1|bat|cmd|ini|cfg|conf|toml|ya?ml|log|sql|srt|vtt|tex|rst|lua|r|swift|dart|vue|svelte)$/i;
+const IMAGEISH = /\.(png|jpe?g|webp|gif|bmp)$/i;
+const PROGRAMISH = /\.(exe|msi|msix|appx|bat|cmd|ps1|vbs|js|jar|scr|com)$/i;
+const handed = new Set(); // files you gave her, the only ones she may read or show her AI
+
+function fileArg(argv = []) {
+  const i = argv.indexOf('--capri-file');
+  const cand = i >= 0 ? argv[i + 1] : null;
+  return cand && fs.existsSync(cand) && fs.statSync(cand).isFile() ? cand : null;
+}
+
+function fileInfo(file) {
+  if (!handed.has(file) || !fs.existsSync(file)) return null;
+  const st = fs.statSync(file);
+  const ext = path.extname(file).slice(1).toLowerCase();
+  const kind = IMAGEISH.test(file) ? 'image' : PROGRAMISH.test(file) && !TEXTISH.test(file) ? 'program' : TEXTISH.test(file) ? 'text' : 'other';
+  let text = '';
+  if (kind === 'text' && st.size <= 2 * 1024 * 1024) {
+    try {
+      text = fs.readFileSync(file, 'utf8').slice(0, 12000);
+    } catch { /* not readable */ }
+  }
+  return { path: file, name: path.basename(file), ext, size: st.size, kind, text, wsl: file.replace(/^([A-Za-z]):\\/, (_m, d) => `/mnt/${d.toLowerCase()}/`).replace(/\\/g, '/') };
+}
+
+// Windows' "Send to" menu gets a Capri entry (once, in the installed app)
+function sendToEntry() {
+  if (process.platform !== 'win32' || !app.isPackaged || config.load().sendToMade) return;
+  const link = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'SendTo', 'Capri.lnk');
+  const q = (s) => String(s).replace(/'/g, "''");
+  const ps = `$s = (New-Object -ComObject WScript.Shell).CreateShortcut('${q(link)}'); $s.TargetPath = '${q(process.execPath)}'; $s.Arguments = '--capri-file'; $s.IconLocation = '${q(process.execPath)},0'; $s.Save()`;
+  execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 20000 }, (err) => {
+    if (!err) config.save({ sendToMade: true });
+  });
+}
+
+// The vision model for her camera: Groq's free vision model if it has one (and you gave her a Groq
+// key), else Gemini's Flash-Lite (with a Gemini key), else her local model if it can see.
+let visionCache = null;
+async function cameraVision() {
+  if (visionCache && Date.now() - visionCache.at < 30 * 60000) return visionCache.v;
+  const cfg = config.load();
+  const keys = setup.openKeys(cfg.apiKeys || {});
+  let v = null;
+  const tryProvider = async (provider, pickers) => {
+    if (!keys[provider]) return null;
+    const list = await llm.models(provider, llmConfig(cfg)).catch(() => []);
+    for (const re of pickers) {
+      const hit = (list || []).find((m) => re.test(m) && !/guard|tts|whisper|embed|image-gen|imagen/i.test(m));
+      if (hit) return { provider, model: hit };
+    }
+    return null;
+  };
+  v = await tryProvider('groq', [/llama-4-scout/i, /llama-4/i, /vision|vl\b|llava|maverick/i]);
+  if (!v) v = await tryProvider('gemini', [/flash-lite/i, /flash/i]);
+  if (!v) {
+    const local = await localModel(cfg);
+    if (local && (await ollama.canSee(local))) v = { provider: 'local', model: local };
+  }
+  visionCache = { at: Date.now(), v };
+  return v;
+}
+
+// Her ear for her name (src/wake): a hidden window of its own running Vosk, on while "Hear the room"
+// and "Answer when I call her" are both on and no call is going on (her window says when).
+let wakeWin = null;
+let wakePaused = false;
+function wakeSync() {
+  const cfg = config.load();
+  const want = cfg.earOn === true && cfg.wakeWord !== false && !wakePaused;
+  if (want && !wakeWin) {
+    wakeWin = new BrowserWindow({
+      show: false, skipTaskbar: true,
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'wake', 'preload.js'), contextIsolation: true, nodeIntegration: false,
+        sandbox: true, backgroundThrottling: false,
+      },
+    });
+    wakeWin.loadURL('capri://app/src/wake/wake.html');
+    wakeWin.on('closed', () => { wakeWin = null; });
+  } else if (!want && wakeWin) {
+    wakeWin.destroy();
+    wakeWin = null;
+  }
+}
+
+// how she is inside (renderer heart.js), at the top of her menu
+let heartLabel = '';
+
+// her hook in your PowerShell profile (scripts/install-shell.js): asked once at start, then after each change
+let pwshHooked = false;
+function checkShellHook() {
+  if (process.platform !== 'win32') return;
+  setImmediate(() => {
+    try {
+      pwshHooked = require('../../scripts/install-shell').status().installed;
+    } catch {
+      pwshHooked = false;
+    }
+    rebuildTray();
+  });
+}
+function runShellHook(action) {
+  try {
+    require('../../scripts/install-shell')[action]();
+    sendCommand('shellHook', { on: action === 'install' });
+  } catch (err) {
+    console.error('[capri] PowerShell hook:', err.message);
+  }
+  checkShellHook();
+}
+
+// Her menu, grouped: what she perceives, how she behaves, health, AI, looks. Items are picked by
+// their label (each keeps its own checkbox and click); anything not listed stays where it was.
+function regroupTray(t, items) {
+  const groups = [
+    [t.groupSenses, [t.activity, t.lookAuto, t.senseInput, t.camera, t.pcReact, t.shellReact, t.pwshInstall, t.pwshRemove]],
+    [t.groupBehavior, [t.chatty, t.pranks, t.wander, t.possess, t.jealous, t.closePages, t.aiLines, t.callQuiet, t.obsMode, t.rest]],
+    [t.groupHealth, [t.breaks, t.eyeBreaks]],
+    [t.groupAI, [t.chatModel, t.taskModel, t.watch]],
+    [t.groupLooks, [t.size, t.theme, t.motion, t.display, t.sound, t.screen]],
+  ];
+  const taken = new Set();
+  const built = groups.map(([label, labels]) => {
+    const submenu = items.filter((it) => it && labels.includes(it.label));
+    submenu.forEach((it) => taken.add(it));
+    return submenu.length ? { label, submenu } : null;
+  }).filter(Boolean);
+  const rest = items.filter((it) => !taken.has(it));
+  // the groups go right after her everyday actions (before the first separator after them)
+  const at = rest.findIndex((it, i) => i > 3 && it.type === 'separator');
+  const head = at >= 0 ? rest.slice(0, at + 1) : rest;
+  const tail = (at >= 0 ? rest.slice(at + 1) : []).filter((it, i, all) => !(it.type === 'separator' && all[i - 1]?.type === 'separator'));
+  return [...head, ...built, { type: 'separator' }, ...tail];
 }
 
 function rebuildTray() {
@@ -319,8 +546,9 @@ function rebuildTray() {
   };
   const cancelReminder = (id) => updateConfig({ reminders: (config.load().reminders || []).filter((r) => r.id !== id) });
 
-  const menu = Menu.buildFromTemplate([
+  const menu = Menu.buildFromTemplate(regroupTray(t, [
     { label: t.online(PORT), enabled: false },
+    ...(heartLabel ? [{ label: heartLabel, enabled: false }] : []),
     { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
     { type: 'separator' },
     { label: t.teleport, click: () => sendCommand('teleport') },
@@ -330,6 +558,23 @@ function rebuildTray() {
     ...(cfg.claude ? [{ label: t.report, click: () => sendCommand('report') }] : []),
     { label: t.talk, click: () => sendCommand('chat') },
     { label: t.lookNow, click: () => sendCommand('look') },
+    ...((cfg.achievements || []).length ? [{
+      label: `${t.achievements} (${cfg.achievements.length})`,
+      submenu: cfg.achievements.map((a) => ({ label: `★ ${a.name}`, enabled: false })),
+    }] : []),
+    {
+      label: t.programs,
+      submenu: [
+        ...(() => {
+          const list = tasks.programs();
+          return list.length
+            ? list.map((p) => ({ label: p.description ? `${p.name} — ${p.description}` : p.name, click: () => openProgram(p) }))
+            : [{ label: t.noPrograms, enabled: false }];
+        })(),
+        { type: 'separator' },
+        { label: t.openShop, click: () => { fs.mkdirSync(tasks.PROGRAMS, { recursive: true }); shell.openPath(tasks.SHOP); } },
+      ],
+    },
     {
       label: t.reminders,
       submenu: reminders.length
@@ -417,11 +662,85 @@ function rebuildTray() {
     { label: t.possess, type: 'checkbox', checked: cfg.possess, click: (item) => updateConfig({ possess: item.checked }) },
     { label: t.jealous, type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
     {
-      label: t.closePages, type: 'checkbox', checked: cfg.closePages !== false, enabled: cfg.jealous !== false,
+      label: t.closePages, type: 'checkbox', checked: cfg.closePages === true, enabled: cfg.jealous !== false,
       click: (item) => updateConfig({ closePages: item.checked }),
     },
     { label: t.pcReact, type: 'checkbox', checked: cfg.pcReact !== false, click: (item) => updateConfig({ pcReact: item.checked }) },
+    { label: t.aiLines, type: 'checkbox', checked: cfg.aiLines !== false, click: (item) => updateConfig({ aiLines: item.checked }) },
+    { label: t.callQuiet, type: 'checkbox', checked: cfg.callQuiet !== false, click: (item) => updateConfig({ callQuiet: item.checked }) },
+    {
+      label: t.taskModel,
+      submenu: ['sonnet', 'opus', 'auto', 'default'].map((m) => ({
+        label: t.taskModels[m], type: 'radio', checked: (cfg.taskModel || 'sonnet') === m,
+        click: () => updateConfig({ taskModel: m }),
+      })),
+    },
+    {
+      label: t.pranks,
+      submenu: ['off', 'light', 'bold'].map((level) => ({
+        label: t.prankLevels[level], type: 'radio', checked: (cfg.pranks || 'light') === level,
+        click: () => updateConfig({ pranks: level }),
+      })),
+    },
+    {
+      label: t.chatty,
+      submenu: ['low', 'normal', 'high'].map((level) => ({
+        label: t.chattyLevels[level], type: 'radio', checked: (cfg.chatty || 'normal') === level,
+        click: () => updateConfig({ chatty: level }),
+      })),
+    },
+    {
+      // like what you do: she says first what it means (counts only, never which keys)
+      label: t.senseInput, type: 'checkbox', checked: cfg.senseInput === true,
+      click: (item) => {
+        sendCommand('senseInput', { on: item.checked });
+        rebuildTray();
+      },
+    },
+    { label: t.shellReact, type: 'checkbox', checked: cfg.shellReact !== false, click: (item) => updateConfig({ shellReact: item.checked }) },
+    // Windows: her hook in your PowerShell profile, one click (bash / zsh: npm run shell:install)
+    ...(process.platform === 'win32' ? [pwshHooked
+      ? { label: t.pwshRemove, click: () => runShellHook('uninstall') }
+      : { label: t.pwshInstall, click: () => runShellHook('install') }] : []),
+    {
+      // like looking at your screen: she says first what goes where, then turns it on herself
+      label: t.activity, type: 'checkbox', checked: Boolean(cfg.watchActivity),
+      click: (item) => {
+        sendCommand('watchActivity', { on: item.checked });
+        rebuildTray();
+      },
+    },
     { label: t.breaks, type: 'checkbox', checked: cfg.breaks !== false, click: (item) => updateConfig({ breaks: item.checked }) },
+    {
+      label: t.camera,
+      submenu: [
+        {
+          // she says first what it means, then turns it on herself
+          label: t.cameraOn, type: 'checkbox', checked: cfg.cameraOn === true,
+          click: (item) => {
+            sendCommand('cameraOn', { on: item.checked });
+            rebuildTray();
+          },
+        },
+        { label: t.cameraLook, type: 'checkbox', checked: cfg.cameraLook === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ cameraLook: item.checked }) },
+        { label: t.lockAway, type: 'checkbox', checked: cfg.lockAway === true, enabled: cfg.cameraOn === true, click: (item) => updateConfig({ lockAway: item.checked }) },
+        { type: 'separator' },
+        {
+          // her ears on the room (hearing.js): she says first what it means
+          label: t.earOn, type: 'checkbox', checked: cfg.earOn === true,
+          click: (item) => {
+            sendCommand('earOn', { on: item.checked });
+            rebuildTray();
+          },
+        },
+        { label: t.wakeWord, type: 'checkbox', checked: cfg.wakeWord !== false, enabled: cfg.earOn === true, click: (item) => updateConfig({ wakeWord: item.checked }) },
+      ],
+    },
+    { label: t.eyeBreaks, type: 'checkbox', checked: cfg.eyeBreaks === true, click: (item) => updateConfig({ eyeBreaks: item.checked }) },
+    {
+      label: t.obsMode,
+      submenu: ['behave', 'show'].map((m) => ({ label: t.obsModes[m], type: 'radio', checked: (cfg.obsMode || 'behave') === m, click: () => updateConfig({ obsMode: m }) })),
+    },
     {
       // she asks first (what she'll send where), then turns it on herself
       label: t.lookAuto, type: 'checkbox', checked: Boolean(cfg.watchScreen),
@@ -500,7 +819,7 @@ function rebuildTray() {
     ] : []),
     { type: 'separator' },
     { label: t.quit, click: () => app.quit() },
-  ]);
+  ]));
   tray.setContextMenu(menu);
   trayMenu = menu;
 }
@@ -527,9 +846,21 @@ function runHooks(action, { quiet = false } = {}) {
 
 // The model she talks with: the one picked in her menu if it's still installed, else the first one
 // on this PC (a cloud model only once you pick it).
+// Groq lists speech, moderation and other models too: the ones to talk with, the best free ones first
+const NOT_CHAT = /whisper|tts|guard|safeguard|distil|orpheus|playai|compound|prompt-guard|embed/i;
+const GROQ_BEST = [/gpt-oss-120b/, /llama-3\.3-70b/, /qwen3?-32b|qwen/, /kimi/, /gpt-oss-20b/, /llama/];
+
 function pickModel(cfg = config.load()) {
   if (!chatModels?.length) return null;
   if (chatModels.includes(cfg.chatModel)) return cfg.chatModel;
+  if (cfg.provider === 'groq') {
+    const talk = chatModels.filter((m) => !NOT_CHAT.test(m));
+    for (const re of GROQ_BEST) {
+      const hit = talk.find((m) => re.test(m));
+      if (hit) return hit;
+    }
+    return talk[0] || chatModels[0];
+  }
   return chatModels.find((m) => !ollama.isCloud(m)) || chatModels[0];
 }
 
@@ -617,12 +948,27 @@ const snaps = new Map(); // id -> the picture, base64 JPEG
 async function snapScreen() {
   const d = targetDisplay();
   const k = d.scaleFactor || 1;
-  const fit = Math.min(1, 1280 / (d.bounds.width * k));
-  const size = { width: Math.round(d.bounds.width * k * fit), height: Math.round(d.bounds.height * k * fit) };
+  // the whole screen at full size, then cut to the window you're in: its text stays readable
+  const size = { width: Math.round(d.bounds.width * k), height: Math.round(d.bounds.height * k) };
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
   const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
   if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
-  return src.thumbnail.toJPEG(72).toString('base64');
+  let img = src.thumbnail;
+  const shot = img.getSize();
+  const win = lastWindows?.wins?.find((w) => w.id === lastWindows.fg && !w.max);
+  if (win && overlay) {
+    const ob = overlay.getBounds();
+    const sx = shot.width / d.bounds.width;
+    const sy = shot.height / d.bounds.height;
+    const x = Math.max(0, Math.round((ob.x + win.x - d.bounds.x) * sx));
+    const y = Math.max(0, Math.round((ob.y + win.y - d.bounds.y) * sy));
+    const w = Math.min(shot.width - x, Math.round(win.w * sx));
+    const h = Math.min(shot.height - y, Math.round(win.h * sy));
+    if (w > 200 && h > 150) img = img.crop({ x, y, width: w, height: h });
+  }
+  const { width } = img.getSize();
+  if (width > 1600) img = img.resize({ width: 1600, quality: 'better' });
+  return img.toJPEG(80).toString('base64');
 }
 
 // What her AI says about that picture, as her (`persona`), asked `prompt`. With a code when it can't:
@@ -631,31 +977,64 @@ async function sayAboutSnap({ id, persona, prompt, history = [] }) {
   const image = snaps.get(id);
   snaps.delete(id);
   if (!image) return { ok: false, error: 'the picture is gone' };
-  const cfg = config.load();
-  if (!chatModels?.length) await refreshModels();
-  const model = pickModel(cfg);
-  if (!model) return { ok: false, code: 'noai' };
-  if (cfg.provider === 'claude') return { ok: false, code: 'novision', model: 'Claude Code' };
-  if (cfg.provider === 'ollama' && !(await ollama.canSee(model))) return { ok: false, code: 'novision', model };
-  const user = cfg.provider === 'ollama'
-    ? { role: 'user', content: prompt, images: [image] }
-    : { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] };
-  // asked in her chat: the conversation so far comes before it (text only)
-  const before = (Array.isArray(history) ? history : []).filter((m) => typeof m?.content === 'string' && ['user', 'assistant'].includes(m.role));
-  const messages = [{ role: 'system', content: persona }, ...before, user];
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const text = await llm.chat(cfg.provider, llmConfig(cfg), { model, messages }, () => {}, AbortSignal.timeout(120000));
-      return { ok: true, text, model };
-    } catch (err) {
-      if (err.code === 'busy' && attempt === 0) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      const novision = /image|vision|multimodal|modalit|image_url|content.*(part|type)/i.test(err.message);
-      return { ok: false, error: err.message, code: novision ? 'novision' : err.code || null, model };
-    }
+  // your screen stays on this PC: only her local model looks at it, even when her chat is online
+  // (asked in her chat: the conversation so far comes before it, text only)
+  const before = (Array.isArray(history) ? history : []).filter((m) => typeof m?.content === 'string' && ['user', 'assistant'].includes(m.role)).slice(-12);
+  const local = await localSay({ persona, prompt, images: [image], history: before, maxTokens: 160, timeout: 120000 });
+  return local.ok || local.code === 'novision' ? local : { ok: false, code: 'noai' };
+}
+
+// ---- Her local mind: Ollama on this PC, whatever her chat runs on ----
+// Everything she says on her own (speech.js), what she makes of what you do (activity.js) and of your
+// screen (look.js) goes to a model on this PC only: what you do on it never leaves it. Her chat can
+// still be an online service (cfg.provider). During a game the model is let go from the graphics
+// card (localPause) and she falls back on her written lines.
+let localList = null;
+let localListAt = 0;
+let localPaused = false;
+let localQueue = Promise.resolve(); // one at a time: a small GPU, and her chat may want it too
+
+async function localModel(cfg = config.load()) {
+  if (!localList || Date.now() - localListAt > 60000) {
+    localList = await ollama.models().then((list) => list.filter((m) => !ollama.isCloud(m)), () => null);
+    localListAt = Date.now();
   }
+  if (!localList?.length) return null;
+  if (localList.includes(cfg.localModel)) return cfg.localModel;
+  if (cfg.provider === 'ollama' && localList.includes(cfg.chatModel)) return cfg.chatModel;
+  return localList.find((m) => /^gemma3/.test(m)) || localList.find((m) => /^(qwen3|llama3)/.test(m)) || localList[0];
+}
+
+function localSay({ persona, prompt, images, history = [], maxTokens = 160, temperature = 0.9, timeout = 60000 }) {
+  const run = async () => {
+    if (localPaused) return { ok: false, code: 'paused' };
+    const model = await localModel();
+    if (!model) return { ok: false, code: 'nolocal' };
+    if (images && !(await ollama.canSee(model))) return { ok: false, code: 'novision', model };
+    const user = { role: 'user', content: prompt, ...(images && { images }) };
+    const messages = [{ role: 'system', content: persona }, ...history, user];
+    try {
+      const text = await ollama.chat({ model, messages, options: { num_predict: maxTokens, temperature }, keepAlive: '30m' }, () => {}, AbortSignal.timeout(timeout));
+      return { ok: true, text, model, local: true };
+    } catch (err) {
+      return { ok: false, error: err.message, code: err.code || null, model };
+    }
+  };
+  const result = localQueue.then(run, run);
+  localQueue = result.catch(() => {});
+  return result;
+}
+
+async function setLocalPause(on) {
+  localPaused = Boolean(on);
+  if (localPaused) await ollama.unload(await localModel());
+}
+
+// What her AI says about what you're doing (activity.js): on this PC only.
+async function sayAbout({ persona, prompt }) {
+  if (typeof persona !== 'string' || typeof prompt !== 'string') return { ok: false, error: 'bad request' };
+  const res = await localSay({ persona, prompt, maxTokens: 120 });
+  return res.code === 'nolocal' ? { ...res, code: 'noai' } : res;
 }
 
 async function pickProvider(provider) {
@@ -748,7 +1127,17 @@ function registerIpc() {
         overlay?.webContents.send('chat:delta', { id, text });
       };
       const cfg = config.load();
-      const text = await chatWithFallback(cfg, messages, send, abort.signal, () => streamed);
+      let text;
+      try {
+        text = await chatWithFallback(cfg, messages, send, abort.signal, () => streamed);
+      } catch (err) {
+        // an online service out of free use for today, down, or unreachable: her model on this PC
+        // answers instead (nothing said yet, and there is one)
+        const online = !['ollama', 'claude'].includes(cfg.provider);
+        const local = online && !abort.signal.aborted && !streamed ? await localModel(cfg) : null;
+        if (!local) throw err;
+        text = await ollama.chat({ model: local, messages, keepAlive: '30m' }, send, abort.signal);
+      }
       if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
       return { ok: true, text };
     } catch (err) {
@@ -770,6 +1159,141 @@ function registerIpc() {
     }
   });
   ipcMain.handle('look:say', (_e, request) => sayAboutSnap(request || {}));
+  ipcMain.handle('activity:say', (_e, request) => sayAbout(request || {}));
+  // her local mind (speech.js, the diary): text only, on this PC
+  ipcMain.handle('local:say', (_e, request) => {
+    const { persona, prompt, maxTokens, temperature } = request || {};
+    if (typeof persona !== 'string' || typeof prompt !== 'string') return { ok: false, error: 'bad request' };
+    return localSay({ persona, prompt, maxTokens: Math.min(Number(maxTokens) || 160, 600), temperature: Number(temperature) || 0.9 });
+  });
+  ipcMain.handle('local:pause', (_e, on) => setLocalPause(on));
+  // what her camera sees, looked at by a vision model (camera.js): free online first, her local one else
+  ipcMain.handle('camera:where', () => cameraVision().then((v) => ({ provider: v?.provider || null, model: v?.model || null, online: v ? v.provider !== 'local' : false })));
+  ipcMain.handle('camera:look', async (_e, { image, persona, prompt } = {}) => {
+    if (typeof image !== 'string' || image.length > 3_000_000) return { ok: false, error: 'bad picture' };
+    const v = await cameraVision();
+    if (!v) return { ok: false, code: 'novision' };
+    if (v.provider === 'local') return localSay({ persona: String(persona || ''), prompt: String(prompt || ''), images: [image], maxTokens: 180, timeout: 120000 });
+    const cfg = config.load();
+    const messages = [
+      { role: 'system', content: String(persona || '') },
+      { role: 'user', content: [{ type: 'text', text: String(prompt || '') }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] },
+    ];
+    try {
+      const text = await llm.chat(v.provider, llmConfig(cfg), { model: v.model, messages }, () => {}, AbortSignal.timeout(45000));
+      return { ok: true, text, model: v.model, provider: v.provider };
+    } catch (err) {
+      visionCache = null; // that one may be gone: look again next time
+      // online didn't work: her local model, if she has one that sees
+      const local = await localSay({ persona: String(persona || ''), prompt: String(prompt || ''), images: [image], maxTokens: 180, timeout: 120000 });
+      return local.ok ? local : { ok: false, error: err.message };
+    }
+  });
+  // her hands (tasks.js)
+  ipcMain.handle('task:start', (_e, req) => startTask(req || {}));
+  // your calendar (calendar.js): the ICS address you gave her
+  ipcMain.handle('calendar:upcoming', (_e, hours) => require('./calendar').upcoming(config.load().calendarUrl, Number(hours) || 36).catch((err) => ({ error: err.message })));
+  // her day-to-day (daily.js)
+  const daily = require('./daily');
+  ipcMain.handle('daily:weather', (_e, { city, lang } = {}) => daily.weather(String(city || '').slice(0, 60), String(lang || 'en')).catch((err) => ({ error: err.message })));
+  ipcMain.handle('clip:read', () => daily.readClip());
+  ipcMain.on('clip:write', (_e, text) => daily.writeClip(text));
+  // a screenshot you just took, seen by her local model only
+  ipcMain.handle('shot:say', async (_e, { file, persona, prompt } = {}) => {
+    if (!shotFiles.has(file)) return { ok: false, error: 'unknown file' };
+    const image = daily.shrink(file);
+    if (!image) return { ok: false, error: 'no picture' };
+    return localSay({ persona: String(persona || ''), prompt: String(prompt || ''), images: [image], maxTokens: 140, timeout: 120000 });
+  });
+  ipcMain.on('task:cancel', () => taskAbort?.abort());
+  // her name heard (src/wake): she perks up and listens (her window: mic.js)
+  ipcMain.on('wake:event', (e, { what, data } = {}) => {
+    if (e.sender !== wakeWin?.webContents) return;
+    if (what === 'heard') sendCommand('wake');
+    else if (what === 'error') console.error('[capri] wake word:', data);
+  });
+  // a call going on: her ear for her name lets go of the microphone too
+  ipcMain.on('wake:pause', (_e, on) => {
+    wakePaused = Boolean(on);
+    wakeSync();
+  });
+  // her chat's models (the service picked), for her menu and for picking the quickest
+  ipcMain.handle('chat:models', async () => (chatModels?.length ? chatModels : (await refreshModels()) || []));
+  // your voice, to text: Groq's free Whisper, with the key you gave her (mic.js). The recording goes
+  // there and nowhere else, and is never kept.
+  ipcMain.handle('mic:transcribe', async (_e, { audio, lang } = {}) => {
+    const key = setup.openKeys(config.load().apiKeys || {}).groq;
+    if (!key) return { error: 'nokey' };
+    if (!(audio instanceof ArrayBuffer || ArrayBuffer.isView(audio)) || !audio.byteLength) return { error: 'empty' };
+    try {
+      const form = new FormData();
+      form.append('file', new Blob([audio], { type: 'audio/webm' }), 'voice.webm');
+      form.append('model', 'whisper-large-v3-turbo');
+      if (/^[a-z]{2}$/.test(lang || '')) form.append('language', lang);
+      form.append('response_format', 'json');
+      const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) return { error: `HTTP ${res.status}` };
+      const data = await res.json();
+      return { text: String(data.text || '').trim() };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+  // a file you handed her (dropped on her chat: the overlay tells us its path)
+  ipcMain.handle('file:hand', (_e, file) => {
+    if (typeof file !== 'string' || !fs.existsSync(file) || !fs.statSync(file).isFile()) return null;
+    handed.add(file);
+    return fileInfo(file);
+  });
+  ipcMain.handle('file:info', (_e, file) => fileInfo(String(file || '')));
+  // a picture you handed her, seen by her local model only
+  ipcMain.handle('file:look', async (_e, { file, persona, prompt } = {}) => {
+    if (!handed.has(file)) return { ok: false, error: 'not handed' };
+    const image = require('./daily').shrink(file);
+    if (!image) return { ok: false, error: 'no picture' };
+    return localSay({ persona: String(persona || ''), prompt: String(prompt || ''), images: [image], maxTokens: 220, timeout: 120000 });
+  });
+  ipcMain.on('heart:label', (_e, label) => {
+    const next = String(label || '').slice(0, 80);
+    if (next === heartLabel) return;
+    heartLabel = next;
+    rebuildTray();
+  });
+  ipcMain.handle('task:projects', () => tasks.projects(config.load().projectsRoot));
+  ipcMain.on('gate:answer', (_e, { id, allow, reason } = {}) => {
+    const resolve = gates.get(id);
+    if (!resolve) return;
+    gates.delete(id);
+    resolve({ allow: Boolean(allow), reason: String(reason || '') });
+  });
+  // her pranks (play.js), only as far as her menu › Mischief allows: the pointer only when 'bold'
+  ipcMain.handle('play:prank', async (_e, { kind, arg } = {}) => {
+    const level = config.load().pranks || 'light';
+    const bold = ['tug', 'jail', 'mute'];
+    if (level === 'off' || (bold.includes(kind) && level !== 'bold')) return false;
+    if (kind === 'mute') {
+      // your sound off for three seconds, then back exactly as it was (only if it was on)
+      const before = await system.act({ action: 'volume' }).catch(() => null);
+      if (!before || before.mute) return false;
+      await system.act({ action: 'volume', mute: true }).catch(() => null);
+      setTimeout(() => system.act({ action: 'volume', mute: false }).catch(() => null), 3000);
+      return true;
+    }
+    return windowWatch?.prank(kind, arg || {}) ?? false;
+  });
+  // what she keeps of your days (activity.js) and her diary of them: in her memory file, on this PC
+  ipcMain.handle('days:get', () => {
+    const { days = {}, diary = {} } = readMemory();
+    return { days, diary };
+  });
+  ipcMain.on('days:save', (_e, { days, diary } = {}) => {
+    const patch = {};
+    if (days && typeof days === 'object') patch.days = days;
+    if (diary && typeof diary === 'object') patch.diary = diary;
+    if (Object.keys(patch).length) saveMemory(patch);
+  });
   // how hard the processor works, in %, since the last time she asked (pc.js)
   let cpuBefore = null;
   ipcMain.handle('pc:cpu', () => {
@@ -785,8 +1309,11 @@ function registerIpc() {
     return total > 0 ? Math.round(100 * (1 - idle / total)) : null;
   });
   // where her AI runs, for what she tells you before she looks: { local, provider, model }
-  ipcMain.handle('look:where', () => {
+  ipcMain.handle('look:where', async () => {
     const cfg = config.load();
+    // what she does on her own (looking, commenting) only ever runs on this PC
+    const mine = await localModel(cfg);
+    if (mine) return { local: true, provider: 'Ollama', model: mine };
     const model = pickModel(cfg);
     const provider = cfg.provider === 'ollama' && ollama.isCloud(model) ? 'Ollama' : llm.PROVIDERS[cfg.provider]?.label || cfg.provider;
     return { local: llm.isLocal(cfg.provider, cfg, model), provider, model };
@@ -815,7 +1342,17 @@ function registerIpc() {
     const abort = new AbortController();
     pulling = abort;
     try {
-      const model = await fetchModel(name, (p) => progress({ kind: 'pull', ...p }), abort.signal);
+      // cut off midway (not by you): again, a few times; Ollama goes on from where it was
+      let model;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          model = await fetchModel(name, (p) => progress({ kind: 'pull', ...p }), abort.signal);
+          break;
+        } catch (err) {
+          if (abort.signal.aborted || attempt >= 4) throw err;
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
       return { ok: true, model };
     } catch (err) {
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message };
@@ -872,6 +1409,12 @@ function registerIpc() {
   })).catch(() => null));
   // how long since you last touched the keyboard or the mouse, in seconds (her health breaks)
   ipcMain.handle('pc:idle', () => powerMonitor.getSystemIdleTime());
+  // you walked away (her camera, with "Lock my PC when I leave" on): Windows locked, as Win+L does
+  ipcMain.handle('pc:lock', () => {
+    if (process.platform !== 'win32' || config.load().lockAway !== true) return false;
+    execFile('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true }, () => {});
+    return true;
+  });
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
   ipcMain.handle('apps:site', (_e, address) => launch.site(address).catch(() => false));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
@@ -1044,7 +1587,12 @@ function main() {
     app.quit();
     return;
   }
-  app.on('second-instance', () => sendCommand('status'));
+  // started again: with a file (Send to › Capri), she takes it; else she says where things stand
+  app.on('second-instance', (_e, argv) => {
+    const file = fileArg(argv);
+    if (file) sendCommand('file', { path: file });
+    else sendCommand('status');
+  });
   if (process.platform === 'win32') app.setAppUserModelId('capri.desktop');
 
   app.whenReady().then(() => {
@@ -1061,14 +1609,63 @@ function main() {
         lastWindows = data;
         overlay?.webContents.send('windows:update', data);
       },
+      onSense: (s) => overlay?.webContents.send('pc:sense', s),
     });
+    windowWatch.sense(config.load().senseInput === true);
+    windowWatch.activity(config.load().watchActivity === true);
+    checkShellHook();
+    sendToEntry();
+    wakeSync();
+    // started with a file (Send to › Capri while she wasn't running)
+    const first = fileArg(process.argv);
+    if (first) setTimeout(() => sendCommand('file', { path: first }), 9000);
+    // what's playing and your screenshots: only while "Comment on what I do" is on (daily.js)
+    followDay(config.load().watchActivity === true);
+    // a program or a script just downloaded: she offers to have Defender look at it (guard.js)
+    require('./guard').watchDownloads((file) => overlay?.webContents.send('guard:download', file));
     createBridge({
       port: PORT,
       // her own Claude Code chat's hooks would cover its answer with theirs
-      onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
+      onEvent: (evt) => {
+        // your terminal (hooks/capri-shell.sh), not an AI: her menu › React to my terminal
+        if (evt.hook_event_name === 'ShellCommand') {
+          if (config.load().shellReact !== false) overlay?.webContents.send('shell:event', evt);
+          return;
+        }
+        if (!llm.isChatSession(evt.session_id)) overlay?.webContents.send('claude:event', evt);
+      },
+      onGate: askGate,
       onDebug: DEV ? debugHandler : null,
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    // talk to her from anywhere, by typing or by voice
+    globalShortcut.register('Control+Alt+Space', () => sendCommand('chat'));
+    globalShortcut.register('Control+Alt+V', () => sendCommand('listen'));
+    // what you copied, translated in her bubble
+    globalShortcut.register('Control+Alt+T', () => sendCommand('translate'));
+    // OBS (or Streamlabs) running: she knows she may be on camera (play.js, her menu › When OBS is on)
+    let obsOn = null;
+    const lookObs = () => execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 10000 }, (err, out) => {
+      const on = !err && /"(obs64|obs32|obs|Streamlabs OBS|Streamlabs Desktop)\.exe"/i.test(String(out));
+      if (on !== obsOn) {
+        obsOn = on;
+        overlay?.webContents.send('pc:obs', on);
+      }
+    });
+    if (process.platform === 'win32') {
+      lookObs();
+      setInterval(lookObs, 60000);
+    }
+    // her microphone (mic.js), for her own window only; nothing else she shows may ask for it
+    // her microphone (mic.js) and, if you turned it on, her camera (camera.js): for her own window only
+    session.defaultSession.setPermissionRequestHandler((wc, permission, done, details) => {
+      const types = details.mediaTypes || [];
+      const camera = config.load().cameraOn === true;
+      const audioOnly = types.every((m) => m === 'audio');
+      const ok = permission === 'media' && ((wc === overlay?.webContents && types.every((m) => m === 'audio' || (m === 'video' && camera)))
+        || (wc === wakeWin?.webContents && audioOnly));
+      done(Boolean(ok));
+    });
     llm.restoreClaude(readMemory().claude);
     refreshModels(); // for her menu's model list
     setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask

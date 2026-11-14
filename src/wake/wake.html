@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- Her ear for her name, alone in a hidden window: Vosk's worker builds code at run time (Emscripten's
+       embind), which her own window never allows. Nothing from outside ever comes in here: no network,
+       no Node, only the microphone's sound, and only "heard her name" goes out. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src blob:; connect-src 'self' capri: data: blob:">
+  <title>Capri — wake word</title>
+</head>
+<body>
+  <script src="../vendor/vosk.js"></script>
+  <script src="wake.js"></script>
+</body>
+</html>

@@ -47,9 +47,33 @@ function slim(evt) {
   return out;
 }
 
+// Claude Code inside WSL, Capri on Windows: with WSL's default NAT networking, 127.0.0.1 here is
+// not Windows' 127.0.0.1. Windows' own curl.exe, started from WSL, runs on the Windows side and
+// reaches her there. (With networkingMode=mirrored the plain request already gets through.)
+const IN_WSL = process.platform === 'linux'
+  && (Boolean(process.env.WSL_DISTRO_NAME) || /microsoft/i.test(require('node:os').release()));
+const WIN_CURL = '/mnt/c/Windows/System32/curl.exe';
+
+function postViaWindows(body, done) {
+  const { spawn } = require('node:child_process');
+  let child;
+  try {
+    child = spawn(WIN_CURL, [
+      '-s', '-o', 'NUL', '-m', '2', '-X', 'POST', '-H', 'content-type: application/json',
+      '--data-binary', '@-', `http://127.0.0.1:${PORT}/event`,
+    ], { stdio: ['pipe', 'ignore', 'ignore'] });
+  } catch {
+    return done();
+  }
+  child.on('error', done);
+  child.on('exit', done);
+  child.stdin.on('error', () => {});
+  child.stdin.end(body);
+}
+
 function run(adapt = (evt) => evt) {
   const bail = () => process.exit(0);
-  setTimeout(bail, 2000).unref();
+  setTimeout(bail, IN_WSL ? 4000 : 2000).unref();
 
   let raw = '';
   process.stdin.setEncoding('utf8');
@@ -78,8 +102,14 @@ function run(adapt = (evt) => evt) {
       res.resume();
       res.on('end', bail);
     });
-    req.on('timeout', () => { req.destroy(); bail(); });
-    req.on('error', bail);
+    let failed = false; // a timeout's destroy() also fires 'error': fall back once
+    const fallback = () => {
+      if (failed) return;
+      failed = true;
+      if (IN_WSL) postViaWindows(body, bail); else bail();
+    };
+    req.on('timeout', () => { req.destroy(); fallback(); });
+    req.on('error', fallback);
     req.end(body);
   });
 }

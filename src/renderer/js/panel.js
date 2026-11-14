@@ -50,7 +50,7 @@ export class Panel {
     this.decodeTimer = null;
     this.anchor = { x: 0, y: 0, side: 1 };
     this.view = { w: innerWidth, h: innerHeight };
-    this.onChar = null;    // (mood) => void, for the voice blips
+    this.onChar = null;    // (mood, { ch, at, question, face }) => void, for the voice blips
     this.onTalk = null;    // (talking: boolean) => void
     this.suspended = false;
     this.tickerAction = null;
@@ -499,7 +499,9 @@ export class Panel {
         tail += chars[i] === ' ' ? ' ' : NOISE[Math.floor(Math.random() * NOISE.length)];
       }
       this.line.textContent = head + tail;
-      if (chars[done - 1] && chars[done - 1] !== ' ') this.onChar?.(kind);
+      if (chars[done - 1] && chars[done - 1] !== ' ') {
+        this.onChar?.(kind, { ch: chars[done - 1], at: done / chars.length, question: /\?\s*$/.test(text), face: this.current?.face });
+      }
       if (done >= chars.length) {
         clearInterval(this.decodeTimer);
         this.line.textContent = text;

@@ -1,4 +1,4 @@
-**English** · [Français](README.fr.md)
+**English** · [Français](README.fr.md) · [Português (Brasil)](README.pt-BR.md)
 
 # Capri
 
@@ -156,7 +156,8 @@ The first time, she sets it up with you, with buttons, no terminal:
 - **Online, no account**: Pollinations, nothing to set up.
 - **I have a key**: Groq or Gemini (both have a free tier), OpenRouter, OpenAI, Mistral or DeepSeek. You paste your
   key in her panel and she checks it. It's kept on your PC, encrypted with your Windows account, and only ever sent to
-  that service.
+  that service. On Groq she picks its best free model by herself, and when its free use for the day runs out (or it's
+  down) her model on your PC answers instead.
 
 Her menu › **AI model** lets you switch later: **Set it up with her…**, or straight to a service and a model, LM Studio
 (`:1234`), llama.cpp or vLLM (`:8080`), any OpenAI-compatible server (**API key or address…**), or **Claude Code**
@@ -235,9 +236,229 @@ see?" in her chat: she looks and answers right there, your conversation in mind)
 **She looks at your screen**, if you want. Her menu › **Look at my screen**: her eyes go to the window in front, a
 scanline sweeps it, and she tells you what she makes of it, her way. **Look at my screen now and then** lets her do it
 on her own, every 8 to 15 minutes, when you're there and you've switched windows (off until you tick it). The first
-time, she tells you where the picture goes: to her chat's AI. With an AI on your PC, nothing leaves it; with an online
-one, the picture goes to that service. She never keeps the picture, and her chat remembers what she said for a while.
-It takes a model that can read pictures: gemma3 on your PC, Gemini or OpenAI online (not llama3.2, she'll tell you).
+time, she tells you where the picture goes: to her local AI, on your PC only (even when her chat runs online), so
+nothing leaves it. She never keeps the picture, and her chat remembers what she said for a while. It takes a model on
+your PC that can read pictures: gemma3 (not llama3.2, she'll tell you).
+
+### She comments on what you do
+
+Her menu › **Comment on what I do** (off until you tick it). No picture: she sees the app in front of you and its
+window's title, and tells what it is: a **search** on Google or Bing, a **video** (YouTube, Netflix, Twitch…), **music**
+(Spotify, YouTube Music), a **chat** (WhatsApp, Telegram, Discord), **work** (Teams, Outlook, Word…) or another app. She
+keeps a short timeline of it and now and then says a sentence or two in character: about a search a few seconds in, a
+video after a minute, 45 minutes on the same app, coming back from a game ("so, did you win?") or a call. Her menu ›
+**How talkative**: *A little*, *Normal* or *A lot*. Only when you're at your PC, never during a game or a call.
+
+**It all stays on your PC**: what you do only goes to her local AI (Ollama), even when her chat runs on an online
+service. Banks, password managers, private browsing and sign-in or payment pages she doesn't even see: their title is
+dropped before it reaches her. Of chats she only sees the app's or the chat's name, never messages.
+
+**Her diary.** She keeps a little of each day (how long on what, what you searched, watched, listened to, played) and,
+the next day, writes a few lines about it in her diary. Her chat remembers your last days. It's in her memory file on
+your PC: 14 days of log, 30 diary entries.
+
+### Alive: her lines, meeting mode and her voice
+
+- **Lines by her AI** (her menu, on when there's a model on your PC): all she says on her own (Claude done, an error,
+  the battery, jealousy, petting, being thrown, a game…) comes from a stock of fresh lines her local AI writes in the
+  background, with her original lines as examples of her voice, in different tones. The line is instant and never said
+  twice; with no AI (or during a game) she's back to her written lines, the last ones left out.
+- **During games** her AI lets go of the graphics card (the game needs it) and comes back when you stop playing.
+- **Meeting mode** (her menu › *Stay quiet during calls*): with the microphone or the camera in use (Teams, Meet, Zoom,
+  WhatsApp, Discord…), she goes into her biochip and makes no sound; when the call ends, she's back.
+- **Her "voice"**: not a spoken voice, a digital babble, syllable by syllable, that changes with her face (excited,
+  laughing, smug, sulking), rises at the end of a question and glitches now and then.
+
+### She feels your mouse, and pays you back
+
+- **Shoo her**: wave your pointer at her fast, back and forth (faster than petting), and she flinches and teleports to
+  the other side of the screen, a bit offended. Keep at it and she's cross: she keeps away from you for a while, and
+  may pay you back.
+- **Poke her**: click her over and over and she complains; keep going and she zaps your pointer.
+- **Stare**: leave your pointer resting on her and she notices.
+- **Her mood in her body**: angry or sulking, she glares and huffs now and then; happy, she hops and spins; in the
+  middle of the night she yawns and tells you to sleep; ignored for an hour while you're there, she's bored and comes
+  asking for attention.
+- **Mischief** (her menu › *Mischief*): as payback, or out of boredom, a harmless prank. *Light* (the default): she
+  stomps on the window she sits on and it shakes, or makes your keyboard's lights blink (Caps Lock on and off twice, so
+  it ends as it was). *Bold*: she also reels your pointer in toward her with her lightning. Short, rare, everything put
+  back as it was, and never while you type, play, are in a call or watch something full screen. *None* turns it off.
+
+### She reacts to your terminal
+
+Not just Claude: she reacts to your own commands, in Windows PowerShell (her menu › **Plug me into PowerShell**, one
+click) and in bash or zsh (Linux, macOS or WSL, with the command below). A command
+that failed (she takes the hit and says which), one that took 15 seconds or more (she tells you when it's done, handy
+when you're on another window), `git push`, `git commit`, tests passing. Her own lines, no AI: instant, and nothing
+leaves your PC.
+
+```bash
+npm run shell:install     # adds one line to ~/.bashrc (and ~/.zshrc if there is one), with a backup
+npm run shell:uninstall   # takes it out
+```
+
+She keeps quiet about what's interactive or "fails" on purpose (`grep` finding nothing, `vim`, `ssh`, `less`, `claude`…),
+Ctrl+C, and what's quick and went fine. A command that looks like it holds a secret (token, password, key) reaches her as
+its program's name alone. It all goes to `127.0.0.1` only, in the background, never slowing your terminal (from WSL,
+through Windows' `curl.exe`). `CAPRI_SHELL_MIN=30` in your `.bashrc` changes what counts as long; her menu › **React to my
+terminal** turns it off.
+
+### Her hands: Claude Code working for you
+
+Ask her chat for something that touches files ("sort my downloads by type", "make a folder for project X", "what's
+filling my disk?", "make me a little budget app"), or say "task: …". She offers to put **Claude Code** on it (the one in
+your WSL), with a button. While it works she narrates each step in her ticker, and **every action that changes
+something comes to you** with *Allow*, *Deny* or *Allow all in this task*. At the end she tells you what was done.
+
+- It works from her workshop (`C:\Users\<you>\Capri`) and can reach your user folder.
+- **Deleting is forbidden**, whatever is clicked (`rm`, `rmdir`, `shred`, `sudo`, `dd`, formatting, `git push`): what
+  would go is moved to `Capri\trash\<date>`, recoverable.
+- The **programs** it builds (self-contained web pages) go to `Capri\programs` and show in her menu › **My programs**:
+  each opens in a window of its own, closed whenever you like.
+- It needs Claude Code installed in WSL and `npm run hooks:install` run in that same distro (that's how she knows which).
+
+### Safety and cleanup
+
+- **On her own** (her menu › *React to my PC*): now and then she checks what Windows says and tells you, each thing once
+  a day at most, with a button to fix it: Defender or its real-time protection off, the firewall off, stale virus
+  definitions, a disk in trouble, little space, a restart pending for days, a worn battery. A new program starting with
+  Windows: "was that you?", with a button to turn it off. A program or a script that just landed in Downloads: who
+  signed it, and a button to have Defender check it.
+- **In her chat**: "do a checkup", "scan for viruses" (Defender quick scan), "full cleanup" (temp files, recycle bin,
+  big downloads, startup apps, updates and duplicates, each with its button).
+- She doesn't replace Windows Security: she reads what Windows says and takes you there.
+
+### Day to day
+
+- **Good morning**: the first time you show up in the morning, with the weather (if she knows your city), today's
+  reminders and something from yesterday's diary. **In the evening**, a word about your day.
+- **Focus mode**: "focus mode 50 minutes" counts down in her ticker, and if you drift to a video or a chat she calls you
+  back. "Stop focus mode" ends it.
+- **Weather**: "my city is Lisbon" once, then "is it going to rain?". Only the city's name goes to Open-Meteo (free, no
+  account).
+- **Clipboard**: "summarize what I copied", "translate what I copied": the text goes with your message to her chat, and
+  the answer comes with a *Copy* button.
+- **From anywhere**: Ctrl+Alt+Space opens her chat.
+- **With "Comment on what I do" on**: the song playing (even minimized, through Windows' media controls) and the
+  screenshots you take become things to talk about too, always through her local AI.
+- **Dates**: a week, a month, a hundred days since you met… she remembers.
+
+### Code through your projects
+
+Name the project ("in the capri project, fix the menu bug", "run the tests in jogos-escolhas") and Claude Code works
+**inside it, in WSL** (projects are the folders in `~/dev`; `projectsRoot` in her settings changes that), with the same
+yes at every step. Within the hour, on the same project, she offers to **Carry on with it** (Claude remembers what it
+did) or **Start over**. And when a command fails in your terminal inside a project, her warning comes with **Ask
+Claude to look**.
+
+### Her heart
+
+Four things inside her that everything feeds and reads: **energy** (low deep in the night, back in the morning; the
+battery, a hot CPU, petting), **mood** (your wins and petting lift it; errors, shooing, jealousy bring it down),
+**boredom** (grows while you ignore her) and **affection** (your bond). They change the tone of her lines and chat,
+her babble (higher and quicker when she's up), how much she comments and pranks, and what she does on her own (dozing
+when drained). Her state shows at the top of her menu.
+
+**Emotions**: *fear* (a Defender threat, the battery dying, a storm on the forecast: she startles and hides at the edge
+of the screen), *pride* (three wins of yours in two hours: tests, tasks, focus, to-dos, games), *shame* (say something
+sweet in her chat: she turns away, glitching), *curiosity* (an app she's never seen you use). **Games**: in a great
+mood she dares you to *tag* her (get close and she's gone; click her to catch her); bored, she plays *hide and seek*
+(she peeks from an edge; find her and click).
+
+### Files, to-dos, routines and your week
+
+- **Hand her a file**: right-click it › *Send to* › **Capri**, or drop it on her open chat. She offers Summarize /
+  What's in this picture (local AI) / Check with Defender, and your next message goes with it (Claude gets its path too).
+- **To-dos**: "note: buy cat food", "what do I have to do?", "done cat food", "clear my list". She brings it up in the
+  morning and in focus mode, and cheers when you tick one off.
+- **Routines**: "every day at 11pm tell me to sleep", "every monday at 9:30 remind me of the report", "my routines".
+  When it's time, she comes and finds you like a reminder.
+- **Your week**: "how was my week?", and on her own on Sunday evening: hours per app, games, focus, to-dos.
+- **Games**: after a match she asks how it went (*I won / I lost / Just playing*), keeps streaks and reacts.
+- **Achievements**: first task, 10 tasks, focus sessions, days together, wins… in her menu › *Achievements*.
+- **A memory that learns**: once a day she may offer to remember something she noticed about you, and **asks first**.
+
+### Talk to her
+
+**Ctrl+Alt+V**, speak, and she listens (stopping on her own at silence): your voice becomes text through Groq's free
+Whisper (with your Groq key) and goes to her chat as if typed. She still answers in writing, with her babble.
+
+### More of her
+
+- **Claude's model** (menu › *Claude's model*): Sonnet by default for her tasks; Opus; Auto (Opus in your code projects);
+  or your Claude Code's default.
+- **Calendar**: paste your calendar's secret iCal (.ics) address in her chat. She brings up your events in the morning,
+  warns you 5 minutes before, and answers "what do I have today?".
+- **Limits**: "warn me if I spend 1 hour on YouTube", "my limits" (needs *Comment on what I do*).
+- **Quick translation**: copy some text, press **Ctrl+Alt+T**: the translation shows in a bubble, with a Copy button.
+- **Eyes** (menu › *Eye breaks*): every 20 minutes, 20 seconds looking far away, counted in her ticker.
+- **Sleep**: she notices how late you stayed at the PC and brings it up in the morning.
+- **Music**: with something playing, she dances now and then (with some energy and mood).
+- **Weather in her body**: with your city, she shivers in the cold, melts in the heat, sulks in the rain.
+- **Dates**: "my birthday is 12/05", plus Halloween, Christmas, New Year and Edgerunners' anniversary.
+- **More play**: double-click her (a twirl), hold your click still on her (a hug), and the **reflex test** ("let's
+  play": when she flashes, click her as fast as you can; your best is kept). In her chat: quizzes, riddles, 20 questions.
+- **More mischief**: *Light*: a glitchy "CAPRI WAS HERE" on your screen for a few seconds (only drawn over), a fake
+  notification, dragging the window she sits on and putting it back. *Bold*: your pointer kept around her for 1.5 s,
+  and your sound muted for 3 seconds (only if it was on).
+- **OBS open** (menu › *When OBS is open*): *She behaves* (no pranks, nothing said about your screen) or *She performs*.
+
+### Her life
+
+When nobody needs her, she doesn't just stand there: a repertoire picked by her heart (energy, mood, boredom) and the
+hour. She **goes over to the window you're in and watches**, **hums** (her babble, little notes floating up),
+**doodles** something small on your screen (a heart, a star, a cat… that fades), **juggles** the shards of her mane,
+**trains** (hops, spins, splits), **explores** your windows sitting on one after the other, **creeps up** on your
+still pointer (and bolts when it moves), **naps** when drained, **stargazes**, and **talks to herself** now and then.
+Lively and bored, she moves a lot more; tired, a lot less.
+
+**She feels her surroundings**: she glances at the window you just opened or switched to, sometimes hops onto a new
+window, cheers when you show the desktop (the screen is hers), and gets dizzy when you shake your mouse.
+
+**Feel my keyboard and mouse** (her menu, off until you tick it): she feels the **rhythm**, never the content. Keys are
+counted (only Backspace and Enter told apart), never which keys, and she knows where you click. From that: fingers
+flying, erasing a lot, a burst of Enter, half an hour typing nonstop, angry clicks on one spot, a click right next to
+her. She answers mostly with her body, sometimes a word. It all stays on your PC.
+
+### The camera
+
+Her menu › **Camera › Use my camera** (off until you tick it; she explains first). A small face model (MediaPipe), **on
+your PC**, looks a few times a second: whether you're there (she misses you when you leave and greets you when you're
+back), whether you **smiled** (she smiles back), **yawned**, your **eyes are closing**, or **someone else** showed up.
+None of it leaves the PC or is kept.
+
+When you ask ("look at me", "what's this?" holding something, "read this" showing a paper), or now and then if you tick
+**Look at me and comment now and then**, **one picture** goes to a free online vision model (Groq's, if it has one;
+else Gemini, with a Gemini key) for her to understand and answer; with neither, your PC's model. The camera's light is
+on while she looks, and she lets go of the camera during your calls.
+
+**Hear the room** (menu › *Camera and sounds*, off until you tick it): through the microphone, a second at a time, a
+sound classifier (Google's YAMNet) **on your PC** names what it hears, and she reacts: laughs along, takes a bow at
+applause, says "bless you!", tells you about the doorbell, an alarm or your phone, wants to see the dog or the cat,
+startles at a bang, fears thunder, dances when someone sings or plays music. Nothing is recorded, kept or sent;
+Windows' microphone icon stays on, and she stops during your calls.
+
+**While Claude works**: on a job longer than 45 seconds she doesn't just wait. She goes back to her own life (the
+ticker still shows what Claude does), says a word on how it's going every few minutes, and rushes back when it's done
+or needs you. After her celebration she gives **her take** on what it did (files, commands, errors, time, its final
+answer), with a REVIEW badge.
+
+**And about everything you do**: when you end a **session of 20 minutes or more** on an app (an editor, a show, a game,
+Teams…), she comments on the whole session, as she does for Claude. A game or a call that ended, a new app, a song
+skip the queue: she comments within 2 minutes. With the camera, she looks at you and comments every 4 to 35 minutes,
+by *How talkative*.
+
+**Call her by name**: with *Hear the room* on, say **"Capri"** (menu › *Camera and sounds › Answer when I call
+"Capri"*). An offline speech recognizer (Vosk), on your PC, listens for that word only; when it hears it she perks up
+and listens to what you say next, which goes to Groq's Whisper to become text and lands in her chat. You can say it all
+at once: "Capri, what time is it?".
+
+**She walks**: she strolls across the screen in little hops, visits the clock on the taskbar (sometimes telling you the
+time), and only goes back to rest on the taskbar when she wants to (soon when tired, after a few minutes otherwise).
+
+**Through the camera, too**: she tells you when you're too close to the screen or slouching for a long while, and can
+**lock your PC when you leave** (*Camera and sounds › Lock my PC when I leave*: you gone from the camera for 2 minutes
+and the PC idle).
 
 ### Make her yours
 
@@ -354,6 +575,24 @@ Restart your Claude Code sessions afterwards. To remove it: `npm run hooks:unins
 
 The hooks run `async`: they never slow Claude down, and when Capri isn't running they do nothing.
 
+### Claude Code in WSL, Capri on Windows
+
+If you run Claude Code inside WSL, install Capri on Windows as usual and add her hooks **from WSL**, in the project
+cloned there:
+
+```bash
+npm run hooks:install
+```
+
+The hooks go in WSL's `~/.claude/settings.json`, and a small `.capri-wsl-hooks.json` in your Windows user folder tells
+Capri where they are (her menu shows them as installed and can take them out). With WSL's default NAT networking, WSL's
+`127.0.0.1` isn't Windows': the hook then sends the event through Windows' own `curl.exe`, no network or firewall change.
+With `networkingMode=mirrored` in `.wslconfig`, it goes straight through.
+
+The hook uses the full path of WSL's Node (nvm and fnm only put it on the PATH of a login shell): if you switch Node
+versions, run `npm run hooks:install` again. Claude's window is the one in front when you sent your prompt, so Windows
+Terminal or VS Code on WSL work like any other.
+
 ### Codex or Antigravity instead of Claude Code
 
 Right-click her › **Watch** › **Codex** or **Antigravity**. She says hi and offers to plug herself in, like she does
@@ -451,6 +690,14 @@ reminders and where you two stand.
 
 The title of the window in front of you is only checked, on your PC, against a list of AI names (for her jealousy):
 it's never kept or sent anywhere.
+If you tick *Comment on what I do*, the app in front and its title (not for banks, passwords, private browsing, sign-in
+or payment pages) go to her local AI now and then, on your PC only, even when her chat runs online. Her lines, her diary
+and what she makes of your screen are local too: only what you type in her chat goes to the service you picked.
+Her terminal hook only talks to `127.0.0.1`, and nothing of it reaches an AI.
+The weather sends only the city you gave her to Open-Meteo. A task you hand to her Claude Code goes to Anthropic, like
+any Claude Code session of yours (your plan). What you ask about your clipboard goes to her chat's AI with your message. Your voice (Ctrl+Alt+V) goes to Groq to become
+text, and isn't kept. A file you hand her goes to her chat's AI only with the message you send about it (a picture: to
+her local model only).
 
 When she looks at your screen (only when you ask, or if you ticked *Look at my screen now and then*), a picture of the
 screen goes to her chat's AI: on your PC with Ollama (a local model), to the online service otherwise. It's never written to disk.
@@ -515,6 +762,8 @@ If Windows is set to "Show animations: off", she sticks to fades.
 
 ```
 hooks/capri-hook.js      run by Claude Code, reads the event on stdin and posts it to the app
+hooks/capri-shell.sh     sourced by your bash or zsh: your own commands, to the app (npm run shell:install)
+hooks/capri-pwsh.ps1     the same for PowerShell on Windows (her menu › Plug me into PowerShell)
 scripts/install-hooks.js adds / removes the hook in ~/.claude/settings.json
 tools/build-sprite.py    rebuilds the sprite from the original cut-out (Python + Pillow, only if you change it)
 tools/build-cutins.py    cuts the cut-ins and her faces out of frames of the show
@@ -536,6 +785,17 @@ src/renderer/js/
   reminders.js           reminders: reading them off your message, keeping them, when they come due
   bond.js                how close she is to you, growing over time, and her jealousy of other AIs
   look.js                she looks at your screen: asking first, the scan, what her AI says about it
+  activity.js            she comments on what you do: the app in front and its title, a short timeline, her AI
+  speech.js              her lines by her local AI: a stock of fresh ones for every moment, her written ones as fallback
+  play.js                her pointer play (shooed, poked, stared at), her moods in her body, her mischief
+  hands.js               her hands: Claude Code tasks, every step by your leave (main tasks.js, hooks/capri-gate.js)
+  guard.js               her eye on your PC's safety: checkup, warnings, new startup apps, downloads (main guard.js)
+  daily.js               good morning, the evening, focus mode, the weather, songs, screenshots, your dates (main daily.js)
+  heart.js               her heart: energy, mood, boredom, read by all the rest
+  emotions.js            fear, pride, shame, curiosity, in her body
+  progress.js            games, your week, achievements, what she learns about you
+  mic.js                 talking to her out loud (Groq's Whisper)
+  shell.js               your terminal (hooks/capri-shell.sh): a failed command, a long one, git push, tests
   pc.js                  your PC as she feels it: the processor, the battery, the network, USB sticks, games
   files.js               finding your files (Windows search index), screenshots
   lines.js               what she says (FR / EN / ES / PT / RU)

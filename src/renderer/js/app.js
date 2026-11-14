@@ -12,6 +12,21 @@ import { Custom } from './custom.js';
 import { Bond, Jealousy } from './bond.js';
 import { Reminders, clock } from './reminders.js';
 import { Look } from './look.js';
+import { Activity } from './activity.js';
+import { Speech } from './speech.js';
+import { Play } from './play.js';
+import { Hands } from './hands.js';
+import { Guard } from './guard.js';
+import { Daily } from './daily.js';
+import { Heart } from './heart.js';
+import { Emotions } from './emotions.js';
+import { Progress } from './progress.js';
+import { Mic } from './mic.js';
+import { Senses } from './senses.js';
+import { Life } from './life.js';
+import { Camera } from './camera.js';
+import { Hearing } from './hearing.js';
+import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
 import { Breaks } from './breaks.js';
@@ -103,6 +118,7 @@ async function boot() {
 
   const mission = new Mission();
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang, assistant: config.assistant });
+  brain.host = host;
 
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
@@ -220,7 +236,7 @@ async function boot() {
     const lines = when === 'end' ? brain.t.uplink : brain.t.gaze;
     if (!panel.visible && Math.random() < (when === 'end' ? 0.6 : 0.4)) panel.say({ kind: 'info', line: pick(lines), hold: 3800 });
   };
-  panel.onChar = (kind) => voice.play('blip', { mood: kind });
+  panel.onChar = (kind, how) => voice.play('blip', { mood: kind, ...how });
   panel.onTalk = (talking) => talking && capri.perform('talk');
   capri.onMenu = () => host.openMenu();
 
@@ -229,6 +245,7 @@ async function boot() {
   const guide = new Guide({ capri, panel, voice, host, brain });
   // Talking to her (chat.js): "Talk to her" in her menu, or the button when you click her idle.
   const chat = new Chat({ capri, panel, voice, host, brain });
+  brain.chat = chat; // her persona and her language, for what she says about Claude's work
   brain.onTalk = () => chat.start();
   // Getting her chat going with buttons (setup.js): Ollama and a model, a key, or an address
   const setup = new Setup({ guide, panel, host, brain, capri, voice });
@@ -239,6 +256,8 @@ async function boot() {
   // taking care of your PC from her chat (care.js): what slows it, room, startup, updates, sound,
   // devices, windows, setups, game mode, the internet
   chat.care = new Care({ chat, host, panel, brain, capri });
+  // her hands: Claude Code doing tasks, every step by your leave (hands.js)
+  chat.hands = new Hands({ capri, panel, brain, host, chat, guide, voice });
   setup.onReady = () => chat.start();
   // What she calls you, how she is, your lines, what she remembers (custom.js)
   const custom = new Custom({ guide, host, brain, capri, voice });
@@ -252,25 +271,49 @@ async function boot() {
   capri.fondness = bond.stage;
   const jealousy = new Jealousy({ capri, panel, brain, bond, chat, guide, host });
   jealousy.enabled = config.jealous !== false;
-  jealousy.closePages = config.closePages !== false;
+  jealousy.closePages = config.closePages === true;
   chat.jealousy = jealousy;
   brain.onRival = (key) => jealousy.onRivalEvent(key);
   const reminders = new Reminders({ host, list: config.reminders || [] });
   chat.reminders = reminders;
-  chat.onMessage = () => bond.add('chat', 2);
+  chat.onMessage = (text) => {
+    bond.add('chat', 2);
+    play?.attention();
+    heart?.nudge('chat');
+    if (text) emotions?.heard(text);
+  };
+  // her voice, by her local AI (speech.js): a stock of fresh lines for every moment
+  const speech = new Speech({ brain, host, chat });
+  speech.enabled = config.aiLines !== false;
+  brain.speech = speech;
+  setTimeout(() => speech.prime(), 45000); // once she's settled in
   // looking at your screen (look.js): when you ask, or now and then if you turned it on
   const look = new Look({ capri, panel, brain, chat, guide, host, fx, voice, active: () => performance.now() - lastMove });
   look.configure(config);
   chat.look = look; // "regarde mon écran" in her chat
+  // commenting on what you do (activity.js): the app in front and its title, if you turned it on
+  const activity = new Activity({ capri, panel, brain, chat, guide, host, look, active: () => performance.now() - lastMove });
+  activity.configure(config);
+  // your terminal (shell.js): failed commands, long ones, git push, tests
+  const shell = new Shell({ capri, panel, brain, voice, chat, guide });
+  shell.hands = chat.hands;
   // your PC as she feels it (pc.js): the processor, the battery, the network, a USB stick, a game
   const pc = new Pc({ capri, panel, brain, host, voice, chat, guide });
   pc.enabled = config.pcReact !== false;
+  // a game: her AI lets go of the graphics card (the game wants all of it), she says nothing new
+  pc.onGame = (name, on, ms) => {
+    speech.paused = on;
+    host.localPause(on);
+    activity.onGame(name, on, ms);
+    if (!on) progress?.gameOver(name, ms);
+  };
   let wantsOut = config.visible !== false; // not put away in your settings (Ctrl+Alt+C, her menu)
   pc.wantsOut = () => wantsOut;
 
   // Clicking her: what's going on, or she offers to talk. Sulking, she turns her back on you.
   // About to close one of your other AIs' pages, she leaves it.
   capri.onClick = () => {
+    if (play.onClick()) return; // one poke too many: she answers that instead
     if (jealousy.spare()) return;
     if (panel.visible) panel.hide();
     else if (!jealousy.onClick()) {
@@ -286,7 +329,7 @@ async function boot() {
   capri.onThrown = ({ how, hard = 0 }) => {
     const t = brain.t.thrown;
     if (how === 'leap') {
-      if (Math.random() < 0.4) panel.say({ kind: 'info', face: 'smug', line: pick(brain.t.screens.hello), hold: 3000 });
+      if (Math.random() < 0.4) panel.say({ kind: 'info', face: 'smug', line: brain.line('screens.hello'), hold: 3000 });
       return;
     }
     const now = performance.now();
@@ -296,28 +339,28 @@ async function boot() {
     let line, face = 'smug', feel = null;
     if (throws.length >= 3) {
       throws.length = 0;
-      line = pick(t.angry);
+      line = brain.line('thrown.angry');
       face = 'many';
       feel = 'angry';
       capri.refuseUntil = now + 25000;
       bond.lose(1);
       if (mouse) capri.zap(mouse.x, mouse.y);
-    } else if (how === 'ledge') line = pick(t.ledge);
-    else if (how === 'feet') line = pick(t.feet);
+    } else if (how === 'ledge') line = brain.line('thrown.ledge');
+    else if (how === 'feet') line = brain.line('thrown.feet');
     else if (throws.length === 2) {
-      line = pick(t.again);
+      line = brain.line('thrown.again');
       face = 'aside';
       feel = 'dizzy';
     } else if (hard > 0.75 && Math.random() < 0.5) {
-      line = pick(t.screen);
+      line = brain.line('thrown.screen');
       face = 'laugh';
       feel = 'thrown';
     } else if (bond.stage >= 3) {
-      line = pick(t.fun);
+      line = brain.line('thrown.fun');
       face = 'laugh';
       feel = 'fun';
     } else {
-      line = pick(t.ow);
+      line = brain.line('thrown.ow');
       face = 'wide';
       feel = 'thrown';
     }
@@ -329,7 +372,7 @@ async function boot() {
     jealousy.forgive();
     capri.refuseUntil = 0;
   };
-  capri.onDodge = () => panel.say({ kind: 'info', face: 'smug', line: pick(brain.t.thrown.dodge), hold: 2500 });
+  capri.onDodge = () => panel.say({ kind: 'info', face: 'smug', line: brain.line('thrown.dodge'), hold: 2500 });
 
   // Petted (your pointer back and forth over her mane): she purrs, says something now and then
   // (shy before she's attached to you), and it brings you a little closer. Too long and she's had
@@ -345,10 +388,10 @@ async function boot() {
       if (quiet && now - petTalk > 90000) {
         petTalk = now;
         const attached = bond.stage >= 2;
-        panel.say({ kind: 'info', face: attached ? 'smug' : 'wide', line: pick(attached ? t.high : t.low), hold: 3000 });
+        panel.say({ kind: 'info', face: attached ? 'smug' : 'wide', line: brain.line(attached ? 'pet.high' : 'pet.low'), hold: 3000 });
       }
     } else if (phase === 'enough') {
-      if (quiet) panel.say({ kind: 'info', face: 'many', line: pick(t.enough), hold: 3000 });
+      if (quiet) panel.say({ kind: 'info', face: 'many', line: brain.line('pet.enough'), hold: 3000 });
       if (!mouse || !capri.zap(mouse.x, mouse.y)) capri.perform('huff', capri.towardCenter());
     }
   };
@@ -390,7 +433,7 @@ async function boot() {
     setTimeout(() => {
       if (!quiet()) return;
       capri.perform('hop');
-      panel.say({ kind: 'idle', face: 'look', line: pick(brain.t.bond.back), hold: 3500 });
+      panel.say({ kind: 'idle', face: 'look', line: brain.line('bond.back'), hold: 3500 });
     }, 700);
   };
 
@@ -418,8 +461,8 @@ async function boot() {
       reminders.remove(r.id);
       bond.add('remind', 2);
       panel.setActions([]);
-      if (chat.open) chat.interject(pick(t.doneLine), [], null);
-      else panel.say({ kind: 'info', face: 'smug', line: pick(t.doneLine), hold: 2500 });
+      if (chat.open) chat.interject(brain.line('remind.doneLine'), [], null);
+      else panel.say({ kind: 'info', face: 'smug', line: brain.line('remind.doneLine'), hold: 2500 });
     };
     const actions = [{ id: 'done', label: t.done, primary: true }, { id: 'snooze', label: t.snooze }];
     voice.play('remind');
@@ -538,15 +581,186 @@ async function boot() {
     panel.say({ kind: 'info', line: t.end, hold: 5000 });
   };
 
-  // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, pc, setup, breaks, screens: () => screens };
 
-  host.onClaudeEvent((evt) => brain.handle(evt));
+  // A call (the microphone or the camera in use: Teams, Meet, Zoom, WhatsApp, Discord…): she goes
+  // into her biochip and makes no sound, and comes back out once it's over (if she's the one who left).
+  let callQuiet = config.callQuiet !== false;
+  let inCall = null;
+  function onCall(call) {
+    if (call && !inCall && callQuiet) {
+      inCall = { put: false, at: Date.now(), app: call.cam || call.mic };
+      voice.muted = true;
+      if (!capri.stowed) {
+        inCall.put = true;
+        panel.hide();
+        chat.open && chat.close?.();
+        capri.stow();
+      }
+      activity.onCall(inCall.app, true);
+      camera?.pause(true);
+      hearing?.pause(true);
+      host.wakePause?.(true);
+    } else if (!call && inCall) {
+      const was = inCall;
+      inCall = null;
+      host.getConfig().then((cfg) => voice.configure(cfg)); // her sound as you set it
+      activity.onCall(was.app, false, Date.now() - was.at);
+      camera?.pause(false);
+      hearing?.pause(false);
+      host.wakePause?.(false);
+      if (was.put && capri.stowed && wantsOut) capri.unstow();
+    }
+  }
+
+  // what she does with your pointer, her moods in her body, her mischief (play.js)
+  const play = new Play({ capri, panel, brain, voice, host, bond, chat, guide, busyLife: () => Boolean(pc.game) || Boolean(inCall) });
+  play.level = config.pranks || 'light';
+  play.lastMove = () => lastMove;
+  capri.onPointer = (x, y) => play.onPointer(x, y);
+  // her eye on your PC's safety (guard.js)
+  const guard = new Guard({ capri, panel, brain, host, guide, look, care: chat.care });
+  guard.configure(config);
+  chat.care.guard = guard;
+  // her day with you: good morning, focus, the weather, songs, screenshots, the dates that count (daily.js)
+  const daily = new Daily({ capri, panel, brain, host, chat, activity, look, bond, reminders, voice });
+  daily.configure(config);
+  chat.care.daily = daily;
+
+  // ---- her heart, her emotions, what you build together, her ears: everything feeds them ----
+  const heart = new Heart({ bond });
+  chat.heart = heart;
+  voice.heart = heart;
+  play.heart = heart;
+  activity.heart = heart;
+  heart.ignored = () => Date.now() - play.attentionAt > 20 * 60000 && performance.now() - lastMove < 90000;
+  let heartSent = '';
+  const sendHeart = () => {
+    const label = heart.label(brain.t);
+    if (label !== heartSent) host.heartLabel?.((heartSent = label));
+  };
+  heart.onChange(sendHeart);
+  sendHeart();
+  const emotions = new Emotions({ capri, panel, brain, voice, bond, heart, look });
+  activity.emotions = emotions;
+  const progress = new Progress({ capri, panel, brain, host, chat, guide, look, bond, heart, emotions, activity });
+  progress.configure(config);
+  chat.care.progress = progress;
+  const mic = new Mic({ capri, panel, brain, host, chat, guide, voice });
+  mic.configure(config);
+  daily.heart = heart;
+  chat.care.play = play;
+  // her minigame's record, and its achievement
+  play.best = () => progress.cfg.reflexBest || null;
+  play.onScore = (ms, record) => {
+    if (!record) return;
+    progress.cfg.reflexBest = Math.round(ms);
+    host.setConfig({ reflexBest: Math.round(ms) });
+    progress.check();
+  };
+  // her senses (your keyboard and mouse, the screen) and her life of her own (senses.js, life.js)
+  const senses = new Senses({ capri, panel, brain, voice, heart, bond, play, guide, host });
+  senses.configure(config);
+  const life = new Life({ capri, panel, brain, voice, fx, heart, play, activity });
+  // her eyes on you, through your camera (camera.js)
+  const camera = new Camera({ capri, panel, brain, host, chat, guide, voice, heart, bond, look });
+  camera.configure(config);
+  chat.care.camera = camera;
+  // her ears on the room (hearing.js)
+  const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
+  hearing.configure(config);
+  // her name: she perks up and listens to what you say next (mic.js)
+  hearing.onWake = () => {
+    if (mic.rec || chat.turn) return;
+    capri.wake();
+    capri.perform('curious', capri.towardCenter());
+    voice.play('tick');
+    mic.toggle();
+  };
+  capri.onPointer = (x, y) => {
+    play.onPointer(x, y);
+    senses.onPointer(x, y);
+    life.onPointer(x, y);
+  };
+  capri.onDouble = () => play.onDouble();
+  capri.onHug = () => play.onHug();
+  // OBS open: she behaves (no pranks, nothing said about what's on your screen) or puts on a show
+  const obsMode = (cfg) => {
+    play.obsMode = cfg.obsMode || 'behave';
+    activity.obsBehave = play.obsMode !== 'show';
+  };
+  obsMode(config);
+  host.onObs?.((on) => {
+    daily.obs = on && play.obsMode !== 'show';
+    play.obs = on;
+    activity.obs = on;
+  });
+  // what's in here, for --dev scripts (debug route `eval`)
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  // what she feels (bond.js), into her heart too
+  const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
+  const feel = bond.feel.bind(bond);
+  bond.feel = (kind, vars) => {
+    feel(kind, vars);
+    if (feelHeart[kind]) heart.nudge(feelHeart[kind]);
+  };
+  // your wins: her mood, her pride, your achievements
+  const won = (kind, nudge) => {
+    heart.nudge(nudge);
+    emotions.win(kind);
+    progress.check();
+  };
+  daily.onWin = (kind) => won(kind, kind === 'focus' ? 'focusDone' : 'todoDone');
+  daily.onStorm = () => emotions.fear('storm');
+  chat.shellWin = null;
+  chat.hands.onDone = (ok) => {
+    if (ok) {
+      progress.count('tasks');
+      won('task', 'taskDone');
+    } else heart.nudge('taskFail');
+  };
+  guard.onThreat = () => emotions.fear('threat');
+  activity.onDiary = (day) => progress.learn(day);
+  pc.onFeel = (kind) => {
+    if (kind === 'critical') emotions.fear('battery');
+    else heart.nudge(kind);
+  };
+  const petCount = capri.onPet;
+  capri.onPet = (phase) => {
+    if (phase === 'start') progress.count('pets');
+    return petCount?.(phase);
+  };
+  capri.keepAwayUntil = () => play.keepAway;
+
+  // a file dropped on her (open) chat: hers to look at
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    const where = file && host.pathOf(file);
+    const info = where ? await host.handFile(where).catch(() => null) : null;
+    if (info) chat.attach(info);
+  });
+
+  host.onClaudeEvent((evt) => {
+    brain.handle(evt);
+    if (evt.demo) return;
+    if (evt.hook_event_name === 'Stop') heart.nudge('claudeDone');
+    else if (evt.hook_event_name === 'PostToolUseFailure') heart.nudge('claudeError');
+  });
+  host.onShellEvent((evt) => shell.handle(evt));
+  shell.onFail = () => heart.nudge('fail');
+  shell.onWin = (kind) => {
+    if (kind === 'tests') won('tests', 'testsPass');
+    else if (kind === 'push') heart.nudge('push');
+  };
   host.onWindows((data) => {
     capri.setWindows(data);
     brain.onWindows(data);
     jealousy.onWindows(data);
     pc.onWindows(data);
+    activity.onWindows(data);
+    onCall(data.call);
+    senses?.onWindows(data);
   });
   // the windows as they are now: the watcher only speaks again when something changes
   host.windowsNow().then((data) => data && capri.setWindows(data));
@@ -632,9 +846,22 @@ async function boot() {
   host.onConfig((cfg) => {
     voice.configure(cfg);
     jealousy.enabled = cfg.jealous !== false;
-    jealousy.closePages = cfg.closePages !== false;
+    jealousy.closePages = cfg.closePages === true;
     followOn = cfg.follow !== false;
     look.configure(cfg);
+    activity.configure(cfg);
+    speech.enabled = cfg.aiLines !== false;
+    callQuiet = cfg.callQuiet !== false;
+    play.level = cfg.pranks || 'light';
+    guard.configure(cfg);
+    daily.configure(cfg);
+    progress.configure(cfg);
+    mic.configure(cfg);
+    obsMode(cfg);
+    senses.configure(cfg);
+    camera.configure(cfg);
+    hearing.configure(cfg);
+    if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;
     wantsOut = cfg.visible !== false;
@@ -696,6 +923,37 @@ async function boot() {
         break;
       case 'watchScreen': // "Look at my screen now and then" in her menu
         look.setAuto(cmd.on);
+        break;
+      case 'shellHook': // her menu: plugged into (or out of) your PowerShell
+        capri.wake();
+        if (cmd.on) capri.perform('hop', capri.towardCenter());
+        panel.say({ kind: 'info', face: cmd.on ? 'grin' : 'aside', line: cmd.on ? t.shell.hooked : t.shell.unhooked, hold: 5000 });
+        break;
+      case 'file': { // Send to › Capri: a file for her
+        const info = await host.handFile(cmd.path).catch(() => null);
+        if (info) chat.attach(info);
+        break;
+      }
+      case 'listen': // Ctrl+Alt+V: she listens
+        mic.toggle();
+        break;
+      case 'wake': // her name, heard (src/wake)
+        hearing.heardWord('capri');
+        break;
+      case 'earOn': // her menu: Camera and sounds › Hear the room
+        hearing.setOn(cmd.on);
+        break;
+      case 'cameraOn': // her menu: Camera › Use my camera
+        camera.setOn(cmd.on);
+        break;
+      case 'senseInput': // her menu: Feel my keyboard and mouse
+        senses.setOn(cmd.on);
+        break;
+      case 'translate': // Ctrl+Alt+T: what you copied, translated
+        daily.translate();
+        break;
+      case 'watchActivity': // "Comment on what I do" in her menu
+        activity.setAuto(cmd.on);
         break;
       case 'goScreen': // a screen picked in her menu: she goes there
         goToScreen(cmd.id);

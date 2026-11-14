@@ -92,7 +92,8 @@ async function openaiChat(p, { model, messages }, onDelta, signal) {
   const res = await fetch(`${p.url}/chat/completions`, {
     method: 'POST',
     headers: headers(p.key),
-    body: JSON.stringify({ model, messages, stream: true }),
+    // gpt-oss thinks before it answers: a chat line needs little of it (much quicker on Groq)
+    body: JSON.stringify({ model, messages, stream: true, ...(/gpt-oss/.test(model) && p.url.includes('groq') ? { reasoning_effort: 'low' } : {}) }),
     signal,
   });
   if (!res.ok) throw await failure(res);

@@ -577,8 +577,9 @@ export class Capri {
     }
 
     // resting on the taskbar: a little while after anything happens, she goes back to sit on it
-    if (this.restOn === 'taskbar' && this.mode === 'idle' && this.stance === 'stand'
-      && now - this.lastActivity > 6000 && now > this.nextHome) {
+    // (how long first: her life, life.js, says; she's out and about longer when she's lively)
+    if (this.restOn === 'taskbar' && this.mode === 'idle' && this.stance === 'stand' && !this.walking
+      && now - this.lastActivity > (this.homeAfter?.() ?? 6000) && now > this.nextHome) {
       this.nextHome = now + 8000;
       this.goHome();
       return;
@@ -1859,6 +1860,14 @@ export class Capri {
       }
       down = { x: e.clientX, y: e.clientY, pos: { ...this.pos }, at: this.spritePoint(e.clientX, e.clientY) };
       this.track = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+      // held there, still, a while: a hug (play.js), and no click after it
+      clearTimeout(this.hugTimer);
+      const held = down;
+      this.hugTimer = setTimeout(() => {
+        if (down !== held || this.dragging) return;
+        held.hugged = true;
+        this.onHug?.();
+      }, 1100);
       if (thrown) this.pickUp(down);
     });
     window.addEventListener('mousemove', (e) => {
@@ -1881,13 +1890,25 @@ export class Capri {
       }
       this.stroke(e.clientX, e.clientY);
       this.notice(e.clientX, e.clientY);
+      this.onPointer?.(e.clientX, e.clientY); // play.js: shooing, staring
     });
     window.addEventListener('mouseup', () => {
       if (!down) return;
       const wasDragging = this.dragging;
+      const was = down;
       down = null;
+      clearTimeout(this.hugTimer);
       this.dragging = false;
       if (!wasDragging) {
+        if (was.hugged) return;
+        // a second click right after the first: a double-click
+        const now = performance.now();
+        if (now - (this.lastClick || 0) < 320) {
+          this.lastClick = 0;
+          this.onDouble?.();
+          return;
+        }
+        this.lastClick = now;
         this.onClick?.();
         return;
       }
@@ -2655,6 +2676,7 @@ export class Capri {
       return;
     }
     if (this.mode !== 'idle') return;
+    if (Date.now() < (this.keepAwayUntil?.() || 0)) return; // shooed off a moment ago: she ignores it
     // now and then she's a little menace about it
     if (Math.random() < 0.3 && this.zap(x, y)) return;
     this.perform('curious', x < h.x ? -1 : 1);

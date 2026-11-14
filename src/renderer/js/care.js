@@ -7,17 +7,30 @@
 // changing anything waits for your click.
 
 import { fmt } from './util.js';
+import { TODO_ADD, TODO_LIST, TODO_DONE, TODO_CLEAR, ROUTINE, ROUTINE_LIST, ROUTINE_DEL, CAL_SET, CAL_ASK, LIMIT_SET, LIMIT_LIST, LIMIT_DEL, BIRTHDAY } from './daily.js';
+import { CAM_ASK } from './camera.js';
+const PLAY_ASK = /(?:vamos|bora|quer|vamo) (?:jogar|brincar)|joga(?:r)? (?:um )?(?:jogo|reflexo|comigo)|teste de reflexo|let'?s play|play (?:a game|with me)|on joue|jugamos|давай поиграем/i;
 
 const MB = 1024 ** 2;
 const WAIT_LINE_MS = 1500;
 
 // --- What you ask, in her five languages -------------------------------------------------------
+// her checkup, a virus scan, the big cleanup (guard.js); focus, the weather, your city (daily.js)
+const CHECKUP = /check-?up|(?:pc|computador|notebook|windows)\s+(?:t[áa]|est[áa]|esta|é)\s+segur|seguran[çc]a\s+do\s+(?:meu\s+)?(?:pc|computador|notebook|windows)|verific\w*\s+(?:a\s+)?seguran[çc]a|is my (?:pc|computer|laptop) safe|security check|v[ée]rifie la s[ée]curit[ée]|bilan de s[ée]curit[ée]|revisi[óo]n de seguridad|es seguro mi|проверь безопасность/i;
+const SCAN = /(?:v[íi]rus|amea[çc]as?|malware|virus)\b|antiv[íi]rus|varredura|escane\w+ (?:o |meu )?(?:pc|computador|notebook)|проверь на вирусы/i;
+const SCAN_VERB = /procur|verific|escane|passa|roda|faz|fa[çc]a|check|scan|look|cherche|analyse|v[ée]rifie|busca|revisa|escanea|проверь|найди|run/i;
+const CLEAN_ALL = /limpeza (?:completa|geral|total)|faxina|limp[ae] tudo|deep clean|full clean(?:up)?|clean (?:up )?everything|grand m[ée]nage|nettoyage complet|limpieza completa|limpia todo|полная очистка|генеральная уборка/i;
+const FOCUS_OFF = /(?:para|pare|parar|encerr\w*|sai[ar]?|termin\w*|acaba\w*|stop|end|exit|quit|arr[êe]te|fin(?:is)?|det[ée]n)\s+(?:o |a |the |le |el |du |de )?(?:modo |mode )?(?:foco|focus|concentraci[oó]n|фокус)/i;
+const FOCUS = /modo (?:de )?foco|foco (?:por|de|durante)|me ajud\w+ a focar|focus mode|focus for|mode (?:focus|concentration)|modo (?:concentraci[oó]n|enfoque)|режим фокуса/i;
+const WEATHER = /\b(?:clima|previs[ãa]o do tempo|como (?:t[áa]|est[áa]) o tempo|vai chover|weather|forecast|going to rain|m[ée]t[ée]o|va-t-il pleuvoir|el tiempo|va a llover|погода)\b/i;
+const WEEK = /relat[óo]rio (?:da|desta) semana|como foi (?:a )?minha semana|resumo da semana|minha semana|weekly report|how was my week|my week|ma semaine|mi semana|моя неделя/i;
+const CITY_SET = /(?:minha cidade (?:é|e)|eu moro em|moro em|my city is|i live in|ma ville est|j['’]habite [àa]|mi ciudad es|vivo en|я живу в|мой город)\s+([\p{L}][\p{L} .'-]{1,40})/iu;
 
-const PC = /(?<![\p{L}])(?:pc|ordi\p{L}*|computer|ordenador|computador|компьютер\p{L}*|пк)(?![\p{L}])/iu;
+const PC = /(?<![\p{L}])(?:pc|ordi\p{L}*|computer|ordenador|computador|notebook|note|компьютер\p{L}*|пк)(?![\p{L}])/iu;
 const LOAD = /processeur|\bcpu\b|\bram\b|m[ée]moire|memory|memoria|mem[óo]ria|процессор|памят/i;
 const SLOW = /(?<![\p{L}])(?:rame|ramer|lag\p{L}*|lent|lente|ralenti\p{L}*|slow\p{L}*|lento|lenta|trava\p{L}*|тормоз\p{L}*|медленн\p{L}*|лага\p{L}*)(?![\p{L}])|what(?:'s| is) (?:using|eating|hogging|slowing)|qu['’]est[- ]ce qui (?:consomme|bouffe|prend|mange|utilise|ralentit)|qu[eé] (?:consume|est[aá] usando|ralentiza)|o que (?:est[aá] )?(?:consumindo|usando|deixando)|что (?:ест|жр[её]т|грузит|тормозит)/iu;
 
-const SPACE = /fais(?:[- ]moi)? de la place|lib[eè]re(?:r)? (?:de )?(?:l['’]espace|la place|de la place|du stockage|de l['’]espace)|nettoie (?:mon |le |l['’])?(?:pc|ordi\p{L}*|disque)|vide (?:la |ma )?corbeille|(?:vide|supprime) (?:mes |les )?fichiers temporaires|free (?:up )?(?:some )?(?:disk )?space|clean (?:up )?(?:my |the )?(?:pc|computer|disk|drive)|empty (?:my |the )?(?:recycle )?bin|libera (?:espacio|espa[çc]o)|limpia (?:mi |el )?(?:pc|ordenador|disco)|vac[ií]a (?:la )?papelera|limpa (?:meu |o )?(?:pc|computador|disco)|esvazi[ae] a lixeira|освободи место|почисти (?:компьютер|пк|диск)|очисти (?:корзину|диск|компьютер|пк)/iu;
+const SPACE = /fais(?:[- ]moi)? de la place|lib[eè]re(?:r)? (?:de )?(?:l['’]espace|la place|de la place|du stockage|de l['’]espace)|nettoie (?:mon |le |l['’])?(?:pc|ordi\p{L}*|disque)|vide (?:la |ma )?corbeille|(?:vide|supprime) (?:mes |les )?fichiers temporaires|free (?:up )?(?:some )?(?:disk )?space|clean (?:up )?(?:my |the )?(?:pc|computer|disk|drive)|empty (?:my |the )?(?:recycle )?bin|libera (?:espacio|espa[çc]o)|liber[ae] (?:um pouco de |mais )?espa[çc]o|limpia (?:mi |el )?(?:pc|ordenador|disco)|vac[ií]a (?:la )?papelera|limp[ae] (?:meu |o )?(?:pc|computador|disco|notebook)|esvazi[ae] a lixeira|освободи место|почисти (?:компьютер|пк|диск)|очисти (?:корзину|диск|компьютер|пк)/iu;
 
 const STARTUP = /d[ée]marrage|lancement de windows|startup|start(?:s|ing)? with windows|boot|inicio de windows|al (?:arrancar|iniciar)(?: windows)?|arranque|inicializa[çc][ãa]o|autostart|автозагруз\p{L}*|при запуске/iu;
 const DISABLE = /(?<![\p{L}])(?:d[ée]sactive|enl[eè]ve|retire|supprime|vire|disable|remove|stop|turn off|desactiva|quita|elimina|desativa|tira|убери|отключи)(?![\p{L}])/iu;
@@ -105,6 +118,50 @@ export class Care {
   asked(text, count) {
     const care = (what, more = {}) => ({ kind: 'care', what, ...more });
     if (count > 25) return null; // a long message is a conversation, not an order
+    if (this.guard) {
+      if (CLEAN_ALL.test(text)) return care('cleanAll');
+      if (CHECKUP.test(text)) return care('checkup');
+      if (SCAN.test(text) && SCAN_VERB.test(text)) return care('scan');
+    }
+    if (this.daily) {
+      const url = CAL_SET.exec(text)?.[1];
+      if (url) return care('calendar', { url });
+      if (CAL_ASK.test(text)) return care('calendar', {});
+      const limit = LIMIT_SET.exec(text);
+      if (limit) {
+        const n = Number(limit[1] || limit[4]);
+        const unit = String(limit[2] || limit[5]);
+        return care('limit', { op: 'add', minutes: /^h/i.test(unit) ? n * 60 : n, target: String(limit[3] || limit[6]).trim() });
+      }
+      if (LIMIT_LIST.test(text)) return care('limit', { op: 'list' });
+      const ldel = LIMIT_DEL.exec(text);
+      if (ldel) return care('limit', { op: 'del', target: (ldel[1] || ldel[2]).trim() });
+      const bday = BIRTHDAY.exec(text);
+      if (bday) return care('birthday', { day: bday[1], month: bday[2] });
+      if (PLAY_ASK.test(text) && this.play) return care('play');
+      if (CAM_ASK.test(text) && this.camera) return care('camera', { ask: text });
+      const routine = ROUTINE.exec(text);
+      if (routine) return care('routine', { op: 'add', when: routine[1], hour: Number(routine[2]), minute: Number(routine[3] || 0), text: routine[4].replace(/^(?:e\s+)?(?:me\s+)?(?:lembra(?:r)?|avisa(?:r)?|manda(?:r)?|diz(?:er)?|fala(?:r)?|remind me|tell me)\s+(?:pra\s+|para\s+|de\s+|do\s+|da\s+|dos\s+|das\s+|que\s+|to\s+|of\s+|about\s+)?/i, '').replace(/[.!?]+$/, '').trim() });
+      if (ROUTINE_LIST.test(text)) return care('routine', { op: 'list' });
+      const del = ROUTINE_DEL.exec(text);
+      if (del) return care('routine', { op: 'del', text: (del[1] || del[2]).trim() });
+      const add = TODO_ADD.exec(text);
+      if (add) return care('todo', { op: 'add', text: (add[1] || add[2] || add[3]).replace(/[.!]+$/, '').trim() });
+      if (TODO_CLEAR.test(text)) return care('todo', { op: 'clear' });
+      const done = TODO_DONE.exec(text);
+      if (done) return care('todo', { op: 'done', text: done[1].replace(/[.!]+$/, '').trim() });
+      if (TODO_LIST.test(text)) return care('todo', { op: 'list' });
+      const city = CITY_SET.exec(text)?.[1];
+      if (city) return care('city', { city: city.replace(/[.!?]+$/, '').trim() });
+      if (FOCUS_OFF.test(text)) return care('focus', { on: false });
+      if (FOCUS.test(text)) {
+        const n = /(\d{1,3})\s*(?:min|m\b|minutos|minutes|minutos|минут)/i.exec(text)?.[1] || /(\d{1,3})/.exec(text)?.[1];
+        const hours = /(\d)\s*(?:h\b|hora|hour|heure|час)/i.exec(text)?.[1];
+        return care('focus', { on: true, minutes: hours ? Number(hours) * 60 : Number(n) || 50 });
+      }
+      if (WEATHER.test(text)) return care('weather');
+      if (WEEK.test(text) && this.progress) return care('week');
+    }
     if (NET.test(text)) return care('internet');
     if (GAME_CLOSE.test(text)) {
       const list = GAME_CLOSE.exec(text)[1].split(/\s*(?:,|\bet\b|\band\b|\by\b|\be\b|\bи\b)\s*/i).map((s) => named(s)).filter(Boolean);
@@ -163,6 +220,24 @@ export class Care {
     const size = (bytes) => this.size(bytes);
     const list = (items) => this.list(items);
     switch (asked.what) {
+      case 'checkup': return this.guard.checkupReply();
+      case 'scan': return this.guard.scanReply();
+      case 'cleanAll': return this.guard.cleanAllReply();
+      case 'focus': return this.daily.focusReply(asked);
+      case 'weather': return this.daily.weatherReply();
+      case 'city': return this.daily.cityReply(asked.city);
+      case 'todo': return this.daily.todoReply(asked);
+      case 'calendar': return this.daily.calendarReply(asked);
+      case 'limit': return this.daily.limitReply(asked);
+      case 'birthday': return this.daily.birthdayReply(asked);
+      case 'camera': return this.camera.lookNow(asked.ask);
+      case 'play': {
+        // her minigame: the chat closes so you can click her
+        setTimeout(() => { this.chat.close?.(); setTimeout(() => this.play.reflex(), 700); }, 1600);
+        return { line: this.brain.t.play.reflexInvite, face: 'laugh' };
+      }
+      case 'week': return this.progress.weekReply();
+      case 'routine': return this.daily.routineReply(asked);
       case 'heavy': {
         const r = await run({ action: 'heavy' });
         if (!r) return null;

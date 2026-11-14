@@ -6,6 +6,20 @@ import { rand, pick } from './util.js';
 
 // a minor-pentatonic set for the talking blips; three detuned voices = a chorus of minds
 const BLIP_NOTES = [62, 65, 67, 69, 72, 74, 77, 79];
+// Her babble, not a voice: how it sounds with each face of hers. shift: semitones; gap: ms between
+// two syllables (faster when she's excited); glitch: how often a syllable crackles; low: the octave
+// below louder (all her minds at once).
+const TONES = {
+  grin: { shift: 3, gap: 40, glitch: 0.05 },
+  laugh: { shift: 5, gap: 34, glitch: 0.14 },
+  wide: { shift: 6, gap: 38, glitch: 0.08 },
+  smug: { shift: -1, gap: 52, glitch: 0.04 },
+  look: { shift: 0, gap: 46, glitch: 0.04 },
+  aside: { shift: -4, gap: 60, glitch: 0.03 },
+  calm: { shift: -3, gap: 56, glitch: 0.02 },
+  many: { shift: -2, gap: 44, glitch: 0.16, low: true },
+};
+const VOWEL = /[aeiouyáàâãäéèêëíìîïóòôõöúùûüœæаеёиоуыэюя]/i;
 const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
 export const CUES = ['teleport-out', 'teleport-in', 'done', 'alert', 'error', 'hello', 'blip', 'tick', 'star', 'land', 'rise', 'bolt', 'charge', 'possess', 'throw', 'crash', 'remind', 'jealous', 'purr'];
@@ -80,7 +94,7 @@ export class Voice {
       alert: () => this.alert(),
       error: () => this.error(),
       hello: () => this.hello(),
-      blip: () => this.blip(opts.mood),
+      blip: () => this.blip(opts.mood, opts),
       tick: () => this.tick(),
       star: () => this.star(),
       land: () => this.land(),
@@ -151,16 +165,47 @@ export class Voice {
     if (arriving) this.osc('triangle', 70, t + 0.16, 0.18, 0.3);
   }
 
-  blip(mood = 'talk') {
+  // One syllable of her babble. Fed letter by letter as her line types out (panel.js): a blip on the
+  // vowels, most consonants silent, nothing on punctuation (a breath). The same letter gives the same
+  // note, so words get a shape of their own; a question rises at its end, a sentence falls; her face
+  // sets the pitch, the pace and how glitchy it gets.
+  blip(mood = 'talk', { ch = '', at = 0, question = false, face = '' } = {}) {
+    const c = String(ch);
+    if (c && /[\p{P}\p{S}\s]/u.test(c)) return;
+    if (c && !VOWEL.test(c) && Math.random() < 0.65) return;
+    const tone = TONES[face] || TONES.look;
+    const heart = this.heart?.voice || { shift: 0, pace: 1 }; // her heart: brighter and quicker when she's up
     const now = performance.now();
-    if (now - this.lastBlip < 45) return;
+    if (now - this.lastBlip < tone.gap / heart.pace) return;
     this.lastBlip = now;
     const t = this.ctx.currentTime;
-    const base = pick(BLIP_NOTES) + (mood === 'alert' ? 5 : mood === 'error' ? -7 : 0);
-    const f = midi(base);
-    this.osc('square', f, t, 0.035, 0.035);
-    this.osc('triangle', f * 1.498, t + 0.004, 0.03, 0.025); // a fifth up
-    this.osc('square', f * 0.501, t + 0.008, 0.03, 0.018);   // an octave down, slightly off
+    const note = c ? BLIP_NOTES[(c.toLowerCase().codePointAt(0) * 7) % BLIP_NOTES.length] : pick(BLIP_NOTES);
+    let base = note + tone.shift + heart.shift + (mood === 'alert' ? 5 : mood === 'error' ? -7 : 0);
+    if (question && at > 0.75) base += 6 * (at - 0.75) / 0.25; // up at the end of a question
+    else if (at > 0.9) base -= 3;                               // down at the end of a sentence
+    const f = midi(base) * rand(0.985, 1.015);
+    const len = rand(0.028, 0.042);
+    const o = this.osc('square', f, t, len, 0.034);
+    o.frequency.exponentialRampToValueAtTime(f * rand(0.94, 1.06), t + len); // a little slide, like a word
+    this.osc('triangle', f * 1.498, t + 0.004, len - 0.006, 0.024); // a fifth up
+    this.osc('square', f * 0.501, t + 0.008, len - 0.006, tone.low ? 0.03 : 0.016); // an octave down, slightly off
+    if (Math.random() < tone.glitch) this.crackle(t + len * 0.5);
+  }
+
+  // a syllable breaking up: a few ms of filtered static
+  crackle(t) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = rand(1800, 4200);
+    bp.Q.value = 3;
+    const g = ctx.createGain();
+    this.env(g, t, 0.002, 0.05, 0.018);
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(t, rand(0, 0.9));
+    src.stop(t + 0.03);
   }
 
   // petted: a purr, a low buzz trembling twenty-odd times a second, swelling and fading

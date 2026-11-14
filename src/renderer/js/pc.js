@@ -77,7 +77,7 @@ export class Pc {
       this.hotSince = 0;
       if (this.hot && cpu < 55) {
         this.hot = false;
-        if (!this.panel.visible) this.say(pick(this.t.cool), 'calm', 3000);
+        if (!this.panel.visible) this.say(this.brain.line('pc.cool'), 'calm', 3000);
       }
       return;
     }
@@ -86,7 +86,8 @@ export class Pc {
     this.hot = true;
     this.hotAt = now;
     this.capri.wake();
-    this.say(fmt(pick(this.t.hot), { cpu }), 'wide', 5000);
+    this.say(fmt(this.brain.line('pc.hot'), { cpu }), 'wide', 5000);
+    this.onFeel?.('hot');
     this.voice.play('charge');
     if (await this.whenFree()) this.capri.perform('overheat');
   }
@@ -109,10 +110,11 @@ export class Pc {
         this.chargerAt = now;
         if (charging) {
           this.warned = 1;
-          this.say(pick(this.t.charging), 'laugh', 3500);
+          this.say(this.brain.line('pc.charging'), 'laugh', 3500);
+          this.onFeel?.('charging');
           this.capri.recharge();
         } else {
-          this.say(pick(this.t.unplugged), 'aside', 3500);
+          this.say(this.brain.line('pc.unplugged'), 'aside', 3500);
         }
       }
     }
@@ -122,6 +124,7 @@ export class Pc {
     this.warned = at;
     this.capri.wake();
     this.say(fmt(pick(at === 0.05 ? this.t.critical : this.t.low), { level: Math.round(level * 100) }), 'aside', 6000);
+    this.onFeel?.(at === 0.05 ? 'critical' : 'lowBattery');
     if (await this.whenFree()) this.capri.drain();
   }
 
@@ -132,7 +135,7 @@ export class Pc {
       if (navigator.onLine || !this.enabled) return;
       this.cutOff = true;
       this.voice.play('error');
-      this.say(pick(this.t.offline), 'wide', 5000);
+      this.say(this.brain.line('pc.offline'), 'wide', 5000);
       this.capri.hurt();
     }, 4000);
   }
@@ -142,7 +145,7 @@ export class Pc {
     if (!this.cutOff) return;
     this.cutOff = false;
     this.voice.play('hello');
-    this.say(pick(this.t.online), 'laugh', 3500);
+    this.say(this.brain.line('pc.online'), 'laugh', 3500);
     if (this.capri.free) this.capri.perform('hop');
   }
 
@@ -157,7 +160,7 @@ export class Pc {
       const added = usb.find((d) => !this.drives.includes(d));
       const removed = this.drives.find((d) => !usb.includes(d));
       if (added) this.stick(added);
-      else if (removed) this.say(pick(this.t.usbOut), 'smug', 3500);
+      else if (removed) this.say(this.brain.line('pc.usbOut'), 'smug', 3500);
     }
     this.drives = usb;
 
@@ -176,10 +179,10 @@ export class Pc {
   // a USB stick: she dives into it to have a look
   async stick(drive) {
     this.capri.wake();
-    this.say(fmt(pick(this.t.usb), { drive }), 'look', 2500);
+    this.say(fmt(this.brain.line('pc.usb'), { drive }), 'look', 2500);
     if (!this.quiet || !(await this.whenFree())) return;
     const { w, h } = this.capri.view;
-    if (await this.capri.visit({ x: w - 140, y: h - 6 })) this.say(pick(this.t.usbBack), 'smug', 4500);
+    if (await this.capri.visit({ x: w - 140, y: h - 6 })) this.say(this.brain.line('pc.usbBack'), 'smug', 4500);
   }
 
   // anything else plugged in or out: a phone, a controller, a headset...
@@ -204,9 +207,10 @@ export class Pc {
     // you're playing: a word about it, then she gets out of the way (she's always on top)
     if (!g.said && !g.gone && now - g.since >= GAME_AFTER) {
       g.said = true;
+      this.onGame?.(g.name, true); // her AI lets go of the graphics card (app.js)
       if (this.capri.stowed || this.capri.mode === 'alert') return;
       this.capri.wake();
-      this.say(fmt(pick(this.t.game), { game: g.name }), 'smug', 3000);
+      this.say(fmt(this.brain.line('pc.game'), { game: g.name }), 'smug', 3000);
       setTimeout(() => {
         if (this.game !== g || g.gone || this.capri.stowed || this.capri.mode === 'alert') return;
         g.put = true;
@@ -216,8 +220,9 @@ export class Pc {
     // done playing: she comes back, if she's the one who left
     if (g.gone && now - g.gone >= GAME_OVER) {
       this.game = null;
+      if (g.said) this.onGame?.(g.name, false, now - g.since);
       if (g.put && this.capri.stowed && this.wantsOut()) {
-        this.capri.unstow().then(() => this.say(pick(this.t.gameBack), 'look', 5000));
+        this.capri.unstow().then(() => this.say(this.brain.line('pc.gameBack'), 'look', 5000));
       }
     }
   }

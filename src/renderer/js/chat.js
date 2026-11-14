@@ -5,7 +5,7 @@
 // or the model asks for it with a tag in its answer. Music right away; an app you named yourself
 // right away; anything only the model asked for, a website, and closing an app behind a button.
 
-import { pick, fmt } from './util.js';
+import { pick, fmt, inLang } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
 
@@ -25,12 +25,17 @@ const IN_LANGUAGE = {
 const STAY_MS = 10 * 60 * 1000; // no wandering off mid-conversation
 const LOADING_AFTER_MS = 5000;
 const CLOSE_TAG = /\[\[\s*close\s*:?\s*([^\]]*)\]\]/i; // [[close: AM Music]] at the end of her answer
+// her hands (hands.js): [[task: what Claude Code should do]], or "task: …" said plainly
+// "summarize / translate / fix what I copied": your clipboard's text goes with your message
+const CLIP_ASK = /(?:o que (?:eu )?copiei|(?:texto|conte[úu]do) (?:que )?(?:eu )?copiad|[áa]rea de transfer[êe]ncia|clipboard|what i(?:'ve| have| just)? copied|ce que j['’]ai copi[ée]|presse-papiers|lo que (?:he )?copi[ée]|portapapeles|что я скопировал|буфер обмена)/i;
+const TASK_TAG = /\[\[\s*task\s*:\s*([^\]]*)\]\]/i;
+const TASK_ASK = /^\s*(?:capri,?\s+)?(?:tarefa|task|t[âa]che|tarea|задача|claude)\s*[:,]\s*(.{4,})$/is;
 // "close", "shut down", "ferme", "quitte", "cierra", "fecha", "закрой"... in any of her languages
-const CLOSE_ASK = /\b(close|shut|quit|kill|exit)|ferm|quitt|coupe|arr[êe]t|cierr|cerra|fech|закр|выключ/i;
+const CLOSE_ASK = /\b(close|shut|quit|kill|exit)|ferm|quitt|coupe|arr[êe]t|cierr|cerra|fech|encerr|закр|выключ/i;
 // her other tags: [[open: Spotify]], [[music: Bad Bunny]], [[media: next]], [[site: youtube.com]]
 const TAG = /\[\[\s*(open|music|media|site)\s*:\s*([^\]]*)\]\]/i;
 // "open", "launch", "ouvre", "lance", "abre", "открой"... in any of her languages
-const OPEN_ASK = /\b(open|launch|start|run)\b|ouvr|lance|démarre|abre|abrir|inicia|ejecuta|executa|открой|запусти/i;
+const OPEN_ASK = /\b(open|launch|start|run)\b|ouvr|lance|démarre|abre|abrir|inicia|ejecuta|executa|(?<![a-zà-ÿ])(?:abra|execute|inicie|rode)(?![a-zà-ÿ])|открой|запусти/i;
 // what to do with the music playing, said plainly (only when it's about music, or said in a few words)
 const MEDIA_ASK = [
   ['pause', /\b(pause|pausa|pausar)\b|stop (the )?music|arrête la musique|пауз/i],
@@ -43,12 +48,12 @@ const MEDIA_ASK = [
 ];
 const MUSIC_WORD = /musi|chanson|song|track|titre|morceau|spotify|canci|faixa|песн|музык|трек/i;
 // "put X on Spotify", "mets X sur Spotify", "pon X en Spotify", "coloca X no Spotify", "включи X в Spotify"
-const SPOTIFY_ASK = /(?:play|put on|put|mets|joue|lance|écoute|pon|toca|reproduce|coloca|toque|включи|поставь)\s+(?:moi\s+|me\s+)?(.+?)\s+(?:on|sur|en|no|na|в)\s+spotify/i;
+const SPOTIFY_ASK = /(?:play|put on|put|mets|joue|lance|écoute|pon|toca|reproduce|coloca|coloque|bote|ponha|toque|включи|поставь)\s+(?:moi\s+|me\s+)?(.+?)\s+(?:on|sur|en|no|na|в)\s+spotify/i;
 const MEDIA_ACTIONS = new Set(MEDIA_ASK.map(([action]) => action));
 // "mets Bohemian Rhapsody sur YouTube", "play Daft Punk on youtube"
-const YOUTUBE_ASK = /(?:play|put on|put|mets|met|joue|lance|écoute|pon|toca|reproduce|coloca|bota|toque|включи|поставь)(?:[- ]moi|[- ]me|me)?\s+(.+?)\s+(?:on|sur|en|no|na|в)\s+youtube/i;
+const YOUTUBE_ASK = /(?:play|put on|put|mets|met|joue|lance|écoute|pon|toca|reproduce|coloca|coloque|bote|ponha|bota|toque|включи|поставь)(?:[- ]moi|[- ]me|me)?\s+(.+?)\s+(?:on|sur|en|no|na|в)\s+youtube/i;
 // "mets Bohemian Rhapsody", "joue-moi du Daft Punk", "play some Queen": a song, or a game to play
-const PLAY_ASK = /^(?:capri,?\s+)?(?:mets|met|joue|play|put on|pon|toca|coloca|bota|toque|включи|поставь)(?:[- ]moi|[- ]me|me)?\s+(.{2,100})$/iu;
+const PLAY_ASK = /^(?:capri,?\s+)?(?:mets|met|joue|play|put on|pon|toca|coloca|coloque|bota|bote|ponha|toque|включи|поставь)(?:[- ]moi|[- ]me|me)?\s+(.{2,100})$/iu;
 // "joue à Brawlhalla", "play the game…": a game, not a song
 const GAME_ASK = /^(?:capri,?\s+)?(?:joue|play)\s+(?:à|au|aux|a|the game)\s/i;
 // "du Daft Punk", "some Queen": who to play, without the "some"
@@ -67,11 +72,11 @@ const HER_PICK = /tu veux|ton choix|surprends|you want|whatever|your choice|surp
 const VAGUE_SONG = /^(?:(?:de\s+la|du|des|la|le|les|une?|some|a|the|un|algo\s+de|alguma|um|uma|что-нибудь)\s+)?(?:musique|music|son|sons|chanson|morceau|truc|quelque\s+chose|something|song|tunes?|m[úu]sica|canci[óo]n|algo|coisa|музыку|песню)?\s*[.!?]*$/iu;
 // "trouve mon CV", "où est le pdf du contrat", "find my report", "найди файл…": her search verbs, and
 // what makes it a file on your PC or a search on the web
-const SEARCH_VERB = /(?:cherche|recherche|trouve|retrouve|où (?:est|sont)|search(?: for)?|find|look (?:for|up)|where(?:'s| is| are)|busca|encuentra|d[óo]nde est[áa]n?|procura|acha|onde est[áa]o?|найди|поищи|где)/i;
+const SEARCH_VERB = /(?:cherche|recherche|trouve|retrouve|où (?:est|sont)|search(?: for)?|find|look (?:for|up)|where(?:'s| is| are)|busca|encuentra|d[óo]nde est[áa]n?|procura|acha|procure|ache|encontr[ae]|pesquis[ae]|cad[êe]|onde (?:est[áa]o?|t[áa]|fica)|найди|поищи|где)/i;
 const FILE_WORD = /fichier|dossier|document|photo|image|vid[ée]o|\bpdf\b|\bfiles?\b|folder|archivo|carpeta|arquivo|pasta|файл|папк|\.\w{2,4}\b|sur mon (?:pc|ordi)|dans mes fichiers|on my (?:pc|computer)|en mi (?:pc|ordenador)|no meu (?:pc|computador)|на (?:компьютере|пк)/i;
 const WEB_WORD = /google|internet|\ble web\b|the web|\bonline\b|en ligne|в интернете|в гугле/i;
 // "fais une capture d'écran", "take a screenshot"
-const SHOT_ASK = /capture d['’][ée]cran|screenshot|screen ?shot|captura de (?:pantalla|tela)|скриншот|снимок экрана/i;
+const SHOT_ASK = /capture d['’][ée]cran|screenshot|screen ?shot|captura de (?:pantalla|tela)|(?:tir[ae]|tirar|fa[zç]a?|bat[ae]) (?:um |uma )?print|print(?:a|e|ar)? (?:d?a |minha )?tela|print screen|скриншот|снимок экрана/i;
 
 // Your PC itself (system.js). One of its settings pages: a settings word, or an open verb, before it.
 const SETTINGS_WORD = /param[eè]tres?|r[ée]glages?|settings|configuraci[oó]n|configura[çc][õo]es|ajustes|настройк/i;
@@ -99,16 +104,16 @@ const INFO_ASK = [
 const QUESTION = /\?|combien|\bquel(?:le)?\b|c['’]est quoi|\breste\b|how much|how many|what(?:'s| is)|\bleft\b|cu[aá]nt|\bqu[eé]\b|quanto|\bqual\b|сколько|как(?:ой|ая|ое)|осталось/i;
 // its sound: "mets le son à 30 %", "volume 50"; off and back on
 const VOLUME_ASK = /(?:\bson\b|volume|\bsound\b|volumen|\bsom\b|звук|громкост\w*)\D{0,14}?(\d{1,3})\s*(?:%|pour ?cent|percent|por ?ciento|por ?cento|процент)?/i;
-const MUTE_ASK = /coupe le son|mets? (?:le son )?en muet|\bmute\b|silencia|tira o som|sem som|выключи звук/i;
-const UNMUTE_ASK = /remets? le son|r[ée]active le son|unmute|sound (?:back )?on|quita el silencio|activa el sonido|volta o som|liga o som|включи звук/i;
+const MUTE_ASK = /coupe le son|mets? (?:le son )?en muet|\bmute\b|silencia|tira o som|sem som|(?:deix[ae]|coloc[ae]|bot[ae]|p[õo]e) (?:o (?:som|pc|computador) )?(?:no|em) mudo|(?<!des)mut[ae] o (?:som|pc|computador)|выключи звук/i;
+const UNMUTE_ASK = /remets? le son|r[ée]active le son|unmute|sound (?:back )?on|quita el silencio|activa el sonido|volta o som|liga o som|volte o som|ligue o som|tir[ae] do mudo|desmut[ae]|включи звук/i;
 // a timer, counted down in her ticker
 const TIMER_ASK = /minuteur|\btimer\b|temporizador|cron[oó]metro|таймер/i;
 // Windows' snip of an area (not her own screenshot of all of it)
 const SNIP_ASK = /capture (?:d['’])?une (?:zone|partie)|zone de l['’][ée]cran|\bsnip\b|(?:capture|screenshot|captura) (?:of |de )?(?:an? |una |uma |la |a )?(?:area|region|part|zona|[aá]rea|parte)|снимок области|область экрана/i;
 // its windows: out of the way, back, or side by side
-const TIDY_ASK = /range (?:mes|les|toutes les) fen[êe]tres|cache (?:mes|les|toutes les) fen[êe]tres|montre(?:-moi)? (?:le|mon) bureau|r[ée]duis (?:tout|toutes les fen[êe]tres)|tidy (?:up )?(?:my |the )?windows|minimi[sz]e (?:all|everything|my windows|the windows)|show (?:me )?(?:the |my )?desktop|ordena (?:mis |las )?ventanas|minimiza (?:todo|todas)|muestra el escritorio|organiza (?:minhas |as )?janelas|minimiza tudo|mostra a [áa]rea de trabalho|сверни (?:все|окна)|убери окна|покажи рабочий стол/i;
-const UNTIDY_ASK = /(?:remets|ressors|rends-moi|rouvre) (?:mes|les) fen[êe]tres|(?:bring|put) (?:my |the )?windows back|restore (?:my |the )?windows|devu[ée]lve(?:me)? (?:mis |las )?ventanas|restaura (?:mis |las )?ventanas|volta (?:minhas |as )?janelas|traz (?:minhas |as )?janelas de volta|верни окна/i;
-const PLACE_VERB = /^\s*(?:mets?|place|bouge|d[ée]place|put|move|snap|pon|coloca|mueve|bota|поставь|перемести|сдвинь)\s+/i;
+const TIDY_ASK = /range (?:mes|les|toutes les) fen[êe]tres|cache (?:mes|les|toutes les) fen[êe]tres|montre(?:-moi)? (?:le|mon) bureau|r[ée]duis (?:tout|toutes les fen[êe]tres)|tidy (?:up )?(?:my |the )?windows|minimi[sz]e (?:all|everything|my windows|the windows)|show (?:me )?(?:the |my )?desktop|ordena (?:mis |las )?ventanas|minimiza (?:todo|todas)|muestra el escritorio|organiz[ae] (?:minhas |as )?janelas|minimiz[ae] (?:tudo|todas as janelas)|mostr[ae] a [áa]rea de trabalho|сверни (?:все|окна)|убери окна|покажи рабочий стол/i;
+const UNTIDY_ASK = /(?:remets|ressors|rends-moi|rouvre) (?:mes|les) fen[êe]tres|(?:bring|put) (?:my |the )?windows back|restore (?:my |the )?windows|devu[ée]lve(?:me)? (?:mis |las )?ventanas|restaura (?:mis |las )?ventanas|volt[ae] (?:minhas |as )?janelas|(?:traz|traga) (?:minhas |as )?janelas de volta|верни окна/i;
+const PLACE_VERB = /^\s*(?:mets?|place|bouge|d[ée]place|put|move|snap|pon|coloca|coloque|mova|mueve|bota|bote|ponha|поставь|перемести|сдвинь)\s+/i;
 const SIDE = [
   ['left', /\s*(?:[àa] |on the |to the |a la |na |[àa] la )?(?:gauche|left|izquierda|esquerda|слева|влево|налево)\b/i],
   ['right', /\s*(?:[àa] |on the |to the |a la |na |[àa] la )?(?:droite|right|derecha|direita|справа|вправо|направо)\b/i],
@@ -117,7 +122,7 @@ const SIDE = [
 const DARK_ASK = /mode sombre|th[eè]me sombre|mode nuit|dark mode|dark theme|modo oscuro|tema oscuro|modo escuro|tema escuro|т[её]мн(?:ая|ую) тем|т[её]мный режим/i;
 const LIGHT_ASK = /mode clair|th[eè]me clair|light mode|light theme|modo claro|tema claro|светл(?:ая|ую) тем|светлый режим/i;
 // its power: always behind a button of hers but the cancel
-const PC_WORD = /(?<![\p{L}])(?:pc|ordi\p{L}*|computer|ordenador|computador|компьютер\p{L}*|пк)(?![\p{L}])/iu;
+const PC_WORD = /(?<![\p{L}])(?:pc|ordi\p{L}*|computer|ordenador|computador|notebook|компьютер\p{L}*|пк)(?![\p{L}])/iu;
 const POWER_ASK = [
   ['cancel', /annule (?:l['’])?(?:extinction|arr[êe]t|red[ée]marrage)|cancel (?:the )?(?:shut ?down|restart)|cancela (?:el |o )?(?:apagado|desligamento|reinicio)|отмени (?:выключение|перезагрузку)/i],
   ['restart', /red[ée]marre|reboot|restart|reinicia|reinicie|перезагру/i],
@@ -160,7 +165,9 @@ const NOT_SEARCHED = new Set(('stp svp please pls peux tu can you could would pu
   + 'computer ordenador computador компьютере fichier fichiers dossier dossiers document documents photo photos image images '
   + 'vidéo vidéos video videos file files folder folders archivo archivos carpeta carpetas arquivo arquivos pasta pastas файл '
   + 'файлы папка папку appelé appelée nommé called named llamado chamado qui s appelle est sont is are where où cherche recherche '
-  + 'trouve retrouve search find look up busca encuentra procura acha найди поищи где dónde onde google internet web online ligne').split(' '));
+  + 'trouve retrouve search find look up busca encuentra procura acha найди поищи где dónde onde google internet web online ligne '
+  + 'procure ache encontra encontre pesquisa pesquise cadê cade você voce vc consegue achar procurar encontrar por favor pra mim '
+  + 'minhas tá ta está esta fica').split(' '));
 // the kind of file asked for: "mon projet after effect" is a .aep
 const FILE_TYPES = [
   [/after ?effects?/i, ['aep']], [/premi[eè]re/i, ['prproj']], [/photoshop|\bpsd\b/i, ['psd']], [/illustrator/i, ['ai']],
@@ -361,12 +368,20 @@ export class Chat {
     this.panel.setActions([]); // a close button she offered before goes with a new message
     this.panel.chatTurn({ quote: text, face: 'aside' });
     this.capri.pulse();
-    this.onMessage?.();
+    this.onMessage?.(text);
     // what you asked for plainly happens right away (the music, the volume, an app you named): her
     // line about it comes under her answer (Claude Code, answering her chat, does things its own way)
     const asked = this.agent ? null : this.asked(text);
     if (asked?.kind === 'look') return this.sendLook(text, id);
     if (asked?.kind === 'care') return this.sendCare(asked, id);
+    if (asked?.kind === 'task' && this.hands) {
+      // "task: …": straight to her hands, with a button first
+      this.turn = 0;
+      this.remember({ role: 'assistant', content: this.hands.t.offer });
+      this.panel.stream('…', { done: true });
+      this.panel.setChatBusy(false);
+      return this.hands.offer(asked.text, '…', asked.text);
+    }
     const early = asked && asked.kind !== 'close' ? this.doNow(asked) : null;
     this.bond?.heard(text); // "sorry": she lets it go
     await Promise.race([this.appsReady, new Promise((r) => setTimeout(r, 1500))]);
@@ -379,7 +394,32 @@ export class Chat {
       else this.history.splice(at, 0, { role: 'assistant', content: this.opening });
       this.opening = null;
     }
+    // what you copied, if you asked about it: with your message, for this answer only
+    let clip = '';
+    if (!this.agent && CLIP_ASK.test(text)) {
+      clip = String(await this.host.readClip().catch(() => '')).trim();
+      if (!clip) {
+        this.turn = 0;
+        this.history.pop();
+        this.panel.stream(this.brain.t.daily.clipEmpty, { done: true });
+        this.panel.setFace('aside');
+        this.panel.setChatBusy(false);
+        return;
+      }
+    }
     const messages = [{ role: 'system', content: this.persona() }, ...this.history.slice(-REMEMBER)];
+    // a file you handed her (inbox): with this message, then it's done
+    const file = this.attached;
+    this.attached = null;
+    if (file) {
+      const last = messages.at(-1);
+      const body = file.text ? `\nIts text, between <<< and >>>:\n<<<\n${file.text}\n>>>` : '';
+      messages[messages.length - 1] = { ...last, content: `${last.content}\n\n[The user handed you a file: ${file.name} (${file.kind}, ${Math.max(1, Math.round(file.size / 1024))} KB), at ${file.path} — for Claude Code: ${file.wsl}]${body}` };
+    }
+    if (clip) {
+      const last = messages.at(-1);
+      messages[messages.length - 1] = { ...last, content: `${last.content}\n\n[The text the user copied, to work on as they ask, between <<< and >>>:]\n<<<\n${clip}\n>>>` };
+    }
     // Her mood (angry, sulking…) and her language, said again right by your message, for this answer
     // only. Small local models mostly go by the last thing they read: up in her prompt alone, they
     // forget it (and answer in English after a conversation in English).
@@ -410,12 +450,30 @@ export class Chat {
       this.panel.setChatBusy(false);
       return;
     }
-    const answer = clean(res.text) || '…';
+    let answer = clean(res.text) || '…';
+    // you wrote in her language and she answered in English (a small model slips): once more, firmly
+    if (!this.agent && !inLang(answer, this.brain.lang) && inLang(text, this.brain.lang)) {
+      const note = this.languageNote();
+      const again = await this.host.chatSend({ id: id + 1, messages: [...messages.slice(0, -1), { ...messages.at(-1), content: `${messages.at(-1).content}\n\n${note} ${note}` }] }).catch(() => null);
+      if (again?.ok && inLang(again.text, this.brain.lang)) {
+        res.text = again.text;
+        answer = clean(again.text) || answer;
+      }
+    }
     this.warm = true;
     this.remember({ role: 'assistant', content: answer });
     this.panel.stream(answer, { done: true });
     this.panel.setFace(mood(answer));
     this.panel.setChatBusy(false);
+    if (clip) {
+      // what she made of it: a button to copy it back
+      const dt = this.brain.t.daily;
+      this.panel.setActions([{ id: 'copy', label: dt.copy, primary: true }], () => {
+        this.host.writeClip(answer);
+        this.panel.setActions([]);
+        this.addLine(answer, dt.copied, 'smug');
+      });
+    }
     if (!this.agent) this.after(res.text, answer, asked, early, text);
     this.listApps(); // fresh for the next message
   }
@@ -516,6 +574,8 @@ export class Chat {
   // { kind: 'media', action } | { kind: 'music', song } | { kind: 'close', name } | { kind: 'open', text }
   asked(text) {
     const count = text.trim().split(/\s+/).length;
+    const task = TASK_ASK.exec(text);
+    if (task && this.hands) return { kind: 'task', text: task[1].trim() };
     if (this.reminders) {
       const remind = parseReminder(text);
       if (remind) return { kind: 'remind', ...remind };
@@ -872,6 +932,8 @@ export class Chat {
       return undefined;
     }
     if (done) return this.addLine(answer, done.line, done.face);
+    const task = TASK_TAG.exec(raw);
+    if (task && this.hands) return this.hands.offer(task[1].trim() || text, answer, text);
     if (asked?.kind === 'remind') return undefined; // no time said: her answer asks when
     if (asked?.kind === 'close') return this.offerClose(asked.name, answer);
     if (asked && asked.kind !== 'open') return undefined; // music that didn't work out: nothing more to offer
@@ -1031,9 +1093,52 @@ export class Chat {
       if (soon.length) lines.push(`Reminders you're keeping for them: ${soon.map((r) => `${clock(r.at, this.brain.lang)}${r.text ? ` (${r.text})` : ''}`).join('; ')}.`);
     }
     lines.push('Your system also searches the user\'s files when they ask you to find one, searches the web when they ask, takes screenshots, and starts Roblox games by name: what it did shows under your answer, so never make up file names or results.');
-    lines.push('When the user asks in plain words, your system also takes care of their PC (a reply of yours with buttons comes from it): what slows it down, freeing space, what starts with Windows, updating their apps, duplicate photos, where the sound comes out (headset or speakers), their microphone, Wi-Fi and Bluetooth, ejecting a USB stick, the screen\'s brightness, clipping or recording a game, a window lost off screen or moved to the other screen, setups (their apps and windows kept by name and opened again), game mode, and why the internet is down. If they ask what you can do on their PC, tell them they can just ask you that.');
+    lines.push('When the user asks in plain words, your system also takes care of their PC (a reply of yours with buttons comes from it): what slows it down, freeing space, what starts with Windows, updating their apps, duplicate photos, where the sound comes out (headset or speakers), their microphone, Wi-Fi and Bluetooth, ejecting a USB stick, the screen\'s brightness, clipping or recording a game, a window lost off screen or moved to the other screen, setups (their apps and windows kept by name and opened again), game mode, why the internet is down, a security checkup of Windows, a virus scan by Defender, a big cleanup, focus mode (a countdown, and you call them back when they drift), the weather (once they told you their city: "my city is …"), their calendar (once they gave you its private iCal address), time limits per app or site ("warn me if I spend 1 hour on YouTube"), their birthday, their to-do list and routines, and a reflex minigame ("let\'s play"). Ctrl+Alt+T translates what they copied, Ctrl+Alt+V lets them talk to you out loud. If they ask what you can do on their PC, tell them they can just ask you that.');
+    lines.push('You love games: in this chat you can play quizzes (Cyberpunk, Night City, anything), riddles, 20 questions, word games, would-you-rather, with the user. Keep score, tease, be a sore winner.');
+    lines.push('When the user asks about something they copied (summarize, translate, fix, explain it), the copied text comes with their message between <<< and >>>: work on it, and give the result plainly.');
+    if (this.hands) {
+      if (this.hands.projects.length) lines.push(`The user's code projects (in WSL): ${this.hands.projects.map((p) => p.name).join(', ')}. For work on one of them (code, bugs, tests, features), use the same task tag and name the project in it.`);
+      lines.push('You also have hands: Claude Code, an AI agent that can really work on the user\'s files and folders (organize, move, rename, create folders, find what fills the disk, write documents) and build them small programs or tools with a window of their own. When the user asks for something like that, say in a few words that you can put Claude on it, and end your answer with [[task: a clear, complete description of what to do, in English, with every detail they gave]]. They get a button to start it, and they approve every step: never say it is already done.');
+    }
     lines.push('Apart from that, you can\'t see the user\'s screen or files, and you can\'t touch anything else on their PC: if asked, say plainly that you can\'t, in character, and don\'t pretend to.');
     return lines;
+  }
+
+  // A file you handed her (Send to › Capri, or dropped on her chat): her chat opens with it, quick
+  // buttons for the obvious, and your next message goes with it (its text if it's text, its place on
+  // disk, for Claude Code). A picture is looked at by her local model only.
+  async attach(info) {
+    if (!info) return;
+    const t = this.brain.t.inbox;
+    if (!this.open) await this.start();
+    await new Promise((r) => setTimeout(r, 600));
+    this.attached = info;
+    const buttons = [];
+    if (info.kind === 'text') buttons.push({ id: 'sum', label: t.summarize, primary: true });
+    if (info.kind === 'image') buttons.push({ id: 'img', label: t.image, primary: true });
+    if (info.kind === 'program' || info.kind === 'other') buttons.push({ id: 'scan', label: t.scan, primary: !buttons.length });
+    const line = `${fmt(t.attached, { name: info.name })}\n${t.ask}`;
+    if (!this.interject(line, buttons, (id) => this.onAttached(id, info))) this.panel.say({ kind: 'info', face: 'look', line, hold: 6000 });
+  }
+
+  async onAttached(id, info) {
+    const t = this.brain.t.inbox;
+    this.panel.setActions([]);
+    if (id === 'sum') return this.send(t.summarizeAsk);
+    if (id === 'scan') {
+      this.attached = null;
+      const r = await this.host.pcDo({ action: 'scanFile', path: info.path }).catch(() => null);
+      const g = this.brain.t.guard;
+      const line = r?.clean ? fmt(g.fileClean, { name: info.name }) : r && r.clean === false ? fmt(g.fileThreat, { name: info.name, threat: '' }) : fmt(g.fileFailed, { name: info.name });
+      return this.interject(line, [], null);
+    }
+    if (id === 'img') {
+      this.attached = null;
+      this.interject(t.looking, [], null);
+      const res = await this.host.lookFile({ file: info.path, persona: this.lookPersona(), prompt: `The user handed you this picture (${info.name}). Say what you see in it, in character: two or three sentences.\n${this.languageNote()}` }).catch(() => null);
+      return this.interject(res?.ok && inLang(res.text, this.brain.lang) ? clean(res.text) : res?.ok ? this.brain.t.inbox.looking : this.brain.t.look.noAI, [], null);
+    }
+    return undefined;
   }
 
   // Something of hers that can't wait (a reminder), said right in the chat, with its buttons.
@@ -1057,6 +1162,10 @@ export class Chat {
       userName ? `The user's name is ${userName}: call them that now and then.${notThem}` : notThem && `You don't know the user's name.${notThem}`,
       persona ? `How the user wants you to be, in their own words (follow it, while staying Capri): ${persona}` : '',
       memories.length ? `Things the user asked you to remember:\n${memories.map((m) => `- ${m}`).join('\n')}` : '',
+      // her diary of the last days (activity.js): what she remembers of their life
+      this.diary?.length ? `Your diary of the last days with the user (what you remember; bring it up only when it fits):\n${this.diary.map((d) => `- ${d.date}: ${d.text}`).join('\n')}` : '',
+      // what they're up to right now, if she follows it (activity.js)
+      this.doing ? `What the user is doing on their PC right now: ${this.doing}.` : '',
     ].filter(Boolean);
   }
 
@@ -1083,7 +1192,7 @@ export class Chat {
       'Never read out anything private you might see (passwords, bank details, private messages, addresses): if there is some, just tease them about being busy.',
       ...this.personal(),
       ...(this.bond ? [this.bond.persona()] : []),
-      ...[this.bond?.moodLine()].filter(Boolean),
+      ...[this.heart?.persona(), this.bond?.moodLine()].filter(Boolean),
       lang.last,
     ].join('\n');
   }
@@ -1111,14 +1220,14 @@ export class Chat {
       ...[this.jealousy?.context()].filter(Boolean),
       // what she said about their screen a little while ago (look.js)
       ...(this.seen && Date.now() - this.seen.at < 20 * 60 * 1000
-        ? [`A few minutes ago you looked at the user's screen and told them: "${this.seen.text}". You can bring it up if it fits.`]
+        ? [`A few minutes ago you commented on what the user was doing on their PC and told them: "${this.seen.text}". You can bring it up if it fits.`]
         : []),
       ...(this.agent
         ? ['Under the hood you are Claude Code, working in the user\'s project: really do what they ask with your tools, as carefully as ever. Only your final answer is in character: it shows in a small speech bubble, so sum up what you did in those few sentences.']
         : this.powers()),
       ...(watching ? [`If the user asks what ${assistant} is doing, here is all you know (never make anything up): ${this.brain.context()}`] : []),
       // how she feels right now, last but for her language: small models follow the end of it best
-      ...[this.bond?.moodLine()].filter(Boolean),
+      ...[this.heart?.persona(), this.bond?.moodLine()].filter(Boolean),
       lang.last,
     ].join('\n');
   }

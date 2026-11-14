@@ -41,6 +41,13 @@ public static class CapriWindows {
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out RECT value, int size);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern bool ClipCursor(ref RECT r);
+  [DllImport("user32.dll", EntryPoint = "ClipCursor")] static extern bool FreeCursor(IntPtr none);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
   [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
 
   const int GWL_EXSTYLE = -20;
@@ -92,6 +99,9 @@ public static class CapriWindows {
   static IntPtr procOf = IntPtr.Zero;
   static string proc = "";
   static string game = "";
+  // Comment on what I do (her menu, off by default): only then does the window in front's program
+  // and title leave this script, for her to say something about what you're up to.
+  static volatile bool titles = false;
 
   // A game: its program sits in a launcher's library (Steam, Epic, Riot, Xbox, GOG). The game is the
   // name of its folder there (the launchers themselves aren't games).
@@ -125,6 +135,54 @@ public static class CapriWindows {
 
   static string Json(string s) {
     return "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+  }
+
+  // The window in front, for "Comment on what I do": its program and its title, nothing else.
+  static string App(IntPtr fg) {
+    var title = new StringBuilder(512);
+    GetWindowText(fg, title, 512);
+    var t = Regex.Replace(title.ToString(), @"[\x00-\x1f]", " ");
+    if (t.Length > 160) t = t.Substring(0, 160);
+    return "{\"proc\":" + Json(proc) + ",\"title\":" + Json(t) + "}";
+  }
+
+  // A call: the program using the microphone or the camera right now, as Windows itself keeps it
+  // (Settings > Privacy > Microphone, "currently in use"). Teams, Zoom, Meet in a browser, Discord,
+  // WhatsApp... She goes quiet then. Looked at every couple of seconds; only the program's name.
+  static string call = "null";
+  static DateTime callAt = DateTime.MinValue;
+  static string Call() {
+    if ((DateTime.Now - callAt).TotalMilliseconds < 2000) return call;
+    callAt = DateTime.Now;
+    string mic = InUse("microphone"), cam = InUse("webcam");
+    call = mic == "" && cam == "" ? "null" : "{\"mic\":" + Json(mic) + ",\"cam\":" + Json(cam) + "}";
+    return call;
+  }
+  static string InUse(string what) {
+    try {
+      using (var root = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\" + what)) {
+        if (root == null) return "";
+        string hit = Scan(root);
+        if (hit != "") return hit;
+        using (var np = root.OpenSubKey("NonPackaged")) { return np == null ? "" : Scan(np); }
+      }
+    } catch { return ""; }
+  }
+  static string Scan(Microsoft.Win32.RegistryKey key) {
+    foreach (var name in key.GetSubKeyNames()) {
+      if (name == "NonPackaged") continue;
+      using (var k = key.OpenSubKey(name)) {
+        if (k == null) continue;
+        object start = k.GetValue("LastUsedTimeStart"), stop = k.GetValue("LastUsedTimeStop");
+        if (!(start is long) || !(stop is long) || (long)start == 0 || (long)stop != 0) continue;
+        // "MicrosoftTeams_8wekyb3d8bbwe" or "C:#Program Files#Discord#Discord.exe": the program's name
+        string n = name.Contains("#") ? name.Substring(name.LastIndexOf('#') + 1) : name.Split('_')[0];
+        n = Regex.Replace(n, @"\.exe$", "", RegexOptions.IgnoreCase).ToLowerInvariant();
+        if (n == "capri") continue;
+        return n.Length > 40 ? n.Substring(0, 40) : n;
+      }
+    }
+    return "";
   }
 
   // USB sticks (and SD cards) plugged in, by drive letter, looked at every couple of seconds.
@@ -188,12 +246,163 @@ public static class CapriWindows {
     return "";
   }
 
+  // ---- Feel my keyboard and mouse (her menu, off by default) ----
+  // Her senses: how you type and click, never what. Keys are only counted (and Backspace and Enter
+  // told apart, for her to see you erase or send); which key, never. Clicks come with where they
+  // landed on the screen, for her to react when you click near her or hammer one spot. A line every
+  // second and a half with the counts, only while this is on.
+  static volatile bool sensing = false;
+  static void Sense() {
+    var down = new bool[256];
+    int keys = 0, back = 0, enter = 0;
+    var clicks = new StringBuilder();
+    int nclicks = 0;
+    var last = DateTime.Now;
+    while (true) {
+      System.Threading.Thread.Sleep(20);
+      if (!sensing) { keys = back = enter = nclicks = 0; clicks.Clear(); continue; }
+      for (int k = 1; k < 256; k++) {
+        if (k == 0x10 || k == 0x11 || k == 0x12) continue; // the generic Shift / Ctrl / Alt (their left and right ones count)
+        bool now = (GetAsyncKeyState(k) & 0x8000) != 0;
+        if (now && !down[k]) {
+          if (k == 1 || k == 2 || k == 4) {
+            POINT p;
+            if (nclicks < 12 && GetCursorPos(out p)) {
+              if (clicks.Length > 0) clicks.Append(',');
+              clicks.Append("[").Append(p.X).Append(',').Append(p.Y).Append(',').Append(k == 1 ? 0 : k == 2 ? 2 : 1).Append(']');
+              nclicks++;
+            }
+          } else if (k > 6) {
+            keys++;
+            if (k == 0x08) back++;
+            else if (k == 0x0D) enter++;
+          }
+        }
+        down[k] = now;
+      }
+      if ((DateTime.Now - last).TotalMilliseconds >= 1500) {
+        last = DateTime.Now;
+        if (keys > 0 || nclicks > 0) {
+          Console.Out.WriteLine("{\"sense\":{\"keys\":" + keys + ",\"back\":" + back + ",\"enter\":" + enter + ",\"clicks\":[" + clicks.ToString() + "]}}");
+          Console.Out.Flush();
+        }
+        keys = back = enter = nclicks = 0;
+        clicks.Clear();
+      }
+    }
+  }
+
+  // ---- Her pranks (her menu > Mischief): harmless, short, and everything put back as it was ----
+  static int playing = 0; // one at a time
+
+  // any key held down right now (typing, a shortcut): then she keeps her hands off
+  static bool KeysDown() {
+    for (int k = 8; k < 256; k++) if ((GetAsyncKeyState(k) & 0x8000) != 0) return true;
+    return false;
+  }
+
+  // She tugs your pointer toward her hand: at most 140 px of the way, over `ms`.
+  static void Tug(int x, int y, int ms) {
+    POINT p;
+    if (!GetCursorPos(out p)) return;
+    double dx = x - p.X, dy = y - p.Y, d = Math.Sqrt(dx * dx + dy * dy);
+    if (d < 4) return;
+    double k = Math.Min(1.0, 140.0 / d);
+    int steps = Math.Max(4, ms / 16);
+    for (int i = 1; i <= steps; i++) {
+      double t = (double)i / steps, e = 1 - (1 - t) * (1 - t); // eased
+      SetCursorPos((int)(p.X + dx * k * e), (int)(p.Y + dy * k * e));
+      System.Threading.Thread.Sleep(16);
+    }
+  }
+
+  // She stomps on the window she sits on: it shakes a few px, then is back exactly where it was.
+  static void Shake(long id, int ms) {
+    IntPtr h = new IntPtr(id);
+    RECT r;
+    if (!IsWindowVisible(h) || IsIconic(h) || IsZoomed(h) || !GetWindowRect(h, out r)) return;
+    const uint FLAGS = 0x0001 | 0x0004 | 0x0010; // SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+    int[] dx = { 7, -6, 5, -4, 3, -2, 1, 0 };
+    int[] dy = { -3, 2, -2, 1, -1, 1, 0, 0 };
+    int wait = Math.Max(12, ms / dx.Length);
+    try {
+      for (int i = 0; i < dx.Length; i++) {
+        SetWindowPos(h, IntPtr.Zero, r.Left + dx[i], r.Top + dy[i], 0, 0, FLAGS);
+        System.Threading.Thread.Sleep(wait);
+      }
+    } finally {
+      SetWindowPos(h, IntPtr.Zero, r.Left, r.Top, 0, 0, FLAGS);
+    }
+  }
+
+  // She blinks your keyboard's lights: Caps Lock on and off, twice, so it ends as it was.
+  static void Blink() {
+    for (int i = 0; i < 4; i++) {
+      if (KeysDown() && i % 2 == 0) return; // you started typing: an even count, Caps Lock as it was
+      keybd_event(0x14, 0x3A, 0x0, UIntPtr.Zero); // Caps Lock down
+      keybd_event(0x14, 0x3A, 0x2, UIntPtr.Zero); // and up
+      System.Threading.Thread.Sleep(170);
+    }
+  }
+
+  // Cursor jail: your pointer kept in a small box around her for a moment, then free again.
+  static void Jail(int x, int y, int ms) {
+    var r = new RECT { Left = x - 70, Top = y - 70, Right = x + 70, Bottom = y + 70 };
+    try {
+      SetCursorPos(x, y);
+      ClipCursor(ref r);
+      System.Threading.Thread.Sleep(ms);
+    } finally {
+      FreeCursor(IntPtr.Zero);
+    }
+  }
+
+  // She drags the window she sits on a little way, and puts it back.
+  static void Slide(long id, int dx) {
+    IntPtr h = new IntPtr(id);
+    RECT r;
+    if (!IsWindowVisible(h) || IsIconic(h) || IsZoomed(h) || !GetWindowRect(h, out r)) return;
+    const uint FLAGS = 0x0001 | 0x0004 | 0x0010;
+    dx = Math.Max(-120, Math.Min(120, dx));
+    try {
+      for (int i = 1; i <= 12; i++) { SetWindowPos(h, IntPtr.Zero, r.Left + dx * i / 12, r.Top, 0, 0, FLAGS); System.Threading.Thread.Sleep(30); }
+      System.Threading.Thread.Sleep(1200);
+      for (int i = 11; i >= 0; i--) { SetWindowPos(h, IntPtr.Zero, r.Left + dx * i / 12, r.Top, 0, 0, FLAGS); System.Threading.Thread.Sleep(25); }
+    } finally {
+      SetWindowPos(h, IntPtr.Zero, r.Left, r.Top, 0, 0, FLAGS);
+    }
+  }
+
+  static void Prank(string[] ask) {
+    if (System.Threading.Interlocked.Exchange(ref playing, 1) == 1) return;
+    var worker = new System.Threading.Thread(() => {
+      try {
+        if (KeysDown()) return;
+        int a, b, c;
+        long id;
+        if (ask[0] == "tug" && ask.Length == 4 && int.TryParse(ask[1], out a) && int.TryParse(ask[2], out b) && int.TryParse(ask[3], out c)) Tug(a, b, Math.Min(c, 600));
+        else if (ask[0] == "shake" && ask.Length == 3 && long.TryParse(ask[1], out id) && int.TryParse(ask[2], out c)) Shake(id, Math.Min(c, 700));
+        else if (ask[0] == "blink") Blink();
+        else if (ask[0] == "jail" && ask.Length == 4 && int.TryParse(ask[1], out a) && int.TryParse(ask[2], out b) && int.TryParse(ask[3], out c)) Jail(a, b, Math.Min(c, 2500));
+        else if (ask[0] == "slide" && ask.Length == 3 && long.TryParse(ask[1], out id) && int.TryParse(ask[2], out c)) Slide(id, c);
+      } catch {
+      } finally {
+        System.Threading.Interlocked.Exchange(ref playing, 0);
+      }
+    });
+    worker.IsBackground = true;
+    worker.Start();
+  }
+
   // What Capri asks, one line at a time on our input, each answered with a line of its own.
   public static void Listen() {
     var reader = new System.Threading.Thread(() => {
       string line;
       while ((line = Console.In.ReadLine()) != null) {
         var ask = line.Split(' ');
+        if (ask.Length == 2 && ask[0] == "activity") { titles = ask[1] == "1"; continue; }
+        if (ask.Length == 2 && ask[0] == "sense") { sensing = ask[1] == "1"; continue; }
+        if (ask[0] == "tug" || ask[0] == "shake" || ask[0] == "blink" || ask[0] == "jail" || ask[0] == "slide") { Prank(ask); continue; }
         if (ask.Length != 4 || ask[0] != "close") continue;
         string why;
         long id;
@@ -206,6 +415,9 @@ public static class CapriWindows {
     });
     reader.IsBackground = true;
     reader.Start();
+    var senses = new System.Threading.Thread(Sense);
+    senses.IsBackground = true;
+    senses.Start();
   }
 
   public static void Init() {
@@ -281,7 +493,9 @@ public static class CapriWindows {
     sb.Append("{\"fg\":").Append(fg.ToInt64()).Append(",\"taskbar\":").Append(taskbar ? "true" : "false")
       .Append(",\"ai\":").Append(Ai(fg))
       .Append(",\"game\":").Append(game == "" ? "null" : Json(game))
-      .Append(",\"usb\":").Append(Usb());
+      .Append(",\"usb\":").Append(Usb())
+      .Append(",\"call\":").Append(Call());
+    if (titles && !taskbar) sb.Append(",\"app\":").Append(App(fg));
     lock (gate) sb.Append(",\"plug\":").Append(plug);
     sb.Append(",\"wins\":[");
     int count = 0;

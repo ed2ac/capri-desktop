@@ -95,6 +95,7 @@ public static class CapriAudio {
   public static int Level { get { float v; Marshal.ThrowExceptionForHR(Volume().GetMasterVolumeLevelScalar(out v)); return (int)Math.Round(v * 100); } }
   public static void Set(int level) { Marshal.ThrowExceptionForHR(Volume().SetMasterVolumeLevelScalar(level / 100f, Guid.Empty)); }
   public static void Mute(bool mute) { Marshal.ThrowExceptionForHR(Volume().SetMute(mute, Guid.Empty)); }
+  public static bool Muted { get { bool m; Marshal.ThrowExceptionForHR(Volume().GetMute(out m)); return m; } }
 }
 "@
 `;
@@ -105,9 +106,10 @@ async function volume({ level = null, mute = null } = {}) {
   let line = '';
   if (Number.isFinite(level)) line = `[CapriAudio]::Set(${Math.round(Math.min(100, Math.max(0, level)))}); [CapriAudio]::Mute($false); `;
   else if (typeof mute === 'boolean') line = `[CapriAudio]::Mute($${mute}); `;
-  const out = await apps.powershell(`${AUDIO}${line}[CapriAudio]::Level`).catch(() => null);
-  const now = Number.parseInt(out, 10);
-  return Number.isFinite(now) ? { level: now } : null;
+  const out = await apps.powershell(`${AUDIO}${line}"$([CapriAudio]::Level) $([CapriAudio]::Muted)"`).catch(() => null);
+  const [lv, muted] = String(out || '').trim().split(/\s+/);
+  const now = Number.parseInt(lv, 10);
+  return Number.isFinite(now) ? { level: now, mute: /true/i.test(muted || '') } : null;
 }
 
 // Windows' own snip: you pick the area, it lands in your clipboard.
@@ -193,6 +195,12 @@ function act(req = {}, { display, progress = () => {} } = {}) {
   switch (req.action) {
     // keeping it in shape (upkeep.js)
     case 'heavy': return upkeep.heavy();
+    // her checkup and her warnings (guard.js): only reads what Windows says
+    case 'checkup': return require('./guard').checkup();
+    case 'signature': return require('./guard').signature(String(req.path || ''));
+    case 'scanFile': return require('./guard').scanFile(String(req.path || ''));
+    case 'quickScan': return require('./guard').quickScan();
+    case 'openSecurity': return require('electron').shell.openExternal('windowsdefender://threat').then(() => true, () => false);
     case 'space': return upkeep.space();
     case 'clean': return upkeep.clean();
     case 'trash': return upkeep.trash(String(req.path || ''));

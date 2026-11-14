@@ -82,7 +82,7 @@ function warm(model) {
 }
 
 // Her answer, streamed: onDelta(piece) as it comes, resolves with all of it.
-async function chat({ model, messages }, onDelta, signal) {
+async function chat({ model, messages, options, keepAlive }, onDelta, signal) {
   // cloud models think before they answer, and that counts in num_predict: kept short, with room for it
   const thinks = isCloud(model) && known.get(model)?.thinking;
   const res = await fetch(`${base()}/api/chat`, {
@@ -92,9 +92,9 @@ async function chat({ model, messages }, onDelta, signal) {
       model,
       messages,
       stream: true,
-      keep_alive: '15m', // she stays loaded while you chat
+      keep_alive: keepAlive || '15m', // she stays loaded while you chat
       ...(thinks && { think: 'low' }),
-      options: { temperature: 0.85, num_predict: thinks ? 1200 : 240 },
+      options: { temperature: 0.85, num_predict: thinks ? 1200 : 240, ...options },
     }),
     signal,
   });
@@ -122,6 +122,17 @@ async function chat({ model, messages }, onDelta, signal) {
   return text;
 }
 
+// Out of the graphics card's memory now (a game wants it all): it loads again on the next request.
+function unload(model) {
+  if (!model || isCloud(model)) return Promise.resolve();
+  return fetch(`${base()}/api/generate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model, keep_alive: 0 }),
+    signal: AbortSignal.timeout(5000),
+  }).then(() => {}, () => {});
+}
+
 // Whether a model can look at pictures (gemma3 can, llama3.2 can't). Can't tell: yes, try it.
 async function canSee(model) {
   const res = await fetch(`${base()}/api/show`, {
@@ -135,4 +146,4 @@ async function canSee(model) {
   return !Array.isArray(info.capabilities) || info.capabilities.includes('vision');
 }
 
-module.exports = { base, models, isCloud, account, freeModels, warm, chat, canSee };
+module.exports = { base, models, isCloud, account, freeModels, warm, chat, canSee, unload };

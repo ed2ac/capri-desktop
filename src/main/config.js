@@ -34,12 +34,36 @@ const DEFAULTS = {
   render: 'auto',   // how her window is drawn: 'auto', 'gl' (OpenGL) or 'software' (no graphics card), for PCs that show it black
   follow: true,      // with several screens, she follows the pointer to the one you're on
   jealous: true,     // she gets jealous when she sees you on another AI (bond.js)
-  closePages: true,  // jealous, she closes their pages in your browser, and pages to download them
+  closePages: false, // off by default: jealous, she closes their pages in your browser, and pages to download them
   reminders: [],     // the reminders she keeps: [{ id, at, text, made }] (reminders.js)
   bond: null,        // how close she is to you: { xp, first, last, days, streak, caps } (bond.js)
   pcReact: true,     // she reacts to your PC: the processor at full tilt, the battery, the network, a USB stick, a game (pc.js)
   watchScreen: false, // she looks at your screen now and then and says something about it (look.js)
   lookAsked: false,  // she told you what looking means (where the picture goes) and you said yes
+  watchActivity: false, // she comments on what you do: the app in front and its title, to her chat's AI (activity.js)
+  activityAsked: false, // she told you what that means (where the titles go) and you said yes
+  aiLines: true,     // what she says on her own, written by her local AI (speech.js); off: her written lines
+  callQuiet: true,   // in a call (microphone or camera in use) she goes into her biochip and makes no sound
+  chatty: 'normal',
+  pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
+  localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
+  projectsRoot: '~/dev', // where your code projects are in WSL, for her hands (tasks.js)
+  taskModel: 'sonnet', // Claude's model for her tasks: 'sonnet', 'opus', 'auto' (Opus in code projects) or 'default'
+  calendarUrl: '',   // your calendar's private ICS address (daily.js): only fetched, never sent anywhere else
+  eyeBreaks: false,  // every 20 minutes at the screen, 20 seconds looking far away (breaks.js / daily.js)
+  obsMode: 'behave', // OBS on: 'behave' (no pranks, nothing about what you do on screen) or 'show' (she performs)
+  senseInput: false, // she feels your keyboard and mouse: counts of keys and clicks, never which keys (senses.js)
+  senseAsked: false,
+  cameraOn: false,   // her camera (camera.js): whether you're there, your smile, a yawn… (local), off by default
+  cameraAsked: false,
+  cameraLook: false, // now and then she looks at you through it and says something (a vision model: online if free)
+  lockAway: false,   // her camera sees you gone 2 minutes, the PC idle: Windows locked (camera.js)
+  earOn: false,      // she hears the room: sounds classified on this PC, never recorded (hearing.js)
+  earAsked: false,
+  wakeWord: true,    // with "Hear the room" on: say "Capri" and she listens (Vosk, offline)
+  city: '',          // for the weather (daily.js): only the city's name goes to Open-Meteo
+  knownStartup: null, // what started with Windows when she last looked (guard.js)
+  shellReact: true,  // she reacts to your terminal's commands (hooks/capri-shell.sh): failed, long, git push (shell.js)
   breaks: true,      // after two hours at your PC without a real break, she tells you to take one (breaks.js)
   setups: {},        // your setups, by name: the apps you had open and where (setups.js)
   gameClose: [],     // the apps game mode closes, as you named them

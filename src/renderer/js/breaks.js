@@ -43,7 +43,7 @@ export class Breaks {
     this.capri.wake();
     this.capri.perform('hop');
     this.panel.say({
-      kind: 'info', face: 'look', line: fmt(pick(t.lines), { time }), hold: 20000,
+      kind: 'info', face: 'look', line: fmt(this.brain.line('breaks.lines'), { time }), hold: 20000,
       actions: [{ id: 'pause', label: t.pause, primary: true }, { id: 'later', label: t.later }],
       onAction: (id) => {
         if (id === 'later') {
@@ -51,7 +51,7 @@ export class Breaks {
           this.panel.say({ kind: 'info', face: 'aside', line: t.laterLine, hold: 3500 });
           return;
         }
-        this.panel.say({ kind: 'done', face: 'smug', line: pick(t.paused), hold: 4000 });
+        this.panel.say({ kind: 'done', face: 'smug', line: this.brain.line('breaks.paused'), hold: 4000 });
       },
     });
   }
