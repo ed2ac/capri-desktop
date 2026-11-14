@@ -71,8 +71,11 @@ function installOllama(onLine) {
 async function startOllama() {
   const { app, cli } = ollamaFiles();
   const run = (file, args) => spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
-  if (fs.existsSync(app)) run(app, []);
-  else run(fs.existsSync(cli) ? cli : 'ollama', ['serve']);
+  // only its server, hidden: the Ollama app opens a window (a sign-in for its cloud models) that
+  // a local model doesn't need. The app only if there's no server program to run.
+  if (fs.existsSync(cli)) run(cli, ['serve']);
+  else if (fs.existsSync(app)) run(app, []);
+  else run('ollama', ['serve']);
   for (let i = 0; i < 40; i++) {
     if (await ollama.models().catch(() => null)) return { ok: true };
     await new Promise((r) => setTimeout(r, 750));
