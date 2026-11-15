@@ -52,3 +52,48 @@ test('states with names, and what they change', () => {
   assert.ok(fresh({ mood: 15 }).mischief < fresh({ mood: 75, boredom: 50, energy: 70 }).mischief);
   assert.match(fresh({ mood: 15 }).persona(), /sad/);
 });
+
+test('her energy is a battery: awake drains it, sleep refills it', () => {
+  const h = fresh({ energy: 60 });
+  h.nightFactor = () => 1;
+  h.sleeping = () => 0;
+  for (let i = 0; i < 60; i++) h.tick();
+  assert.ok(h.s.energy < 54 && h.s.energy > 50, `awake an hour: ${h.s.energy}`);
+  h.sleeping = () => 2;
+  for (let i = 0; i < 20; i++) h.tick();
+  assert.ok(h.s.energy > 85, `asleep 20 min: ${h.s.energy}`);
+  const night = fresh({ energy: 60 });
+  night.nightFactor = () => 1.8;
+  night.sleeping = () => 0;
+  for (let i = 0; i < 60; i++) night.tick();
+  assert.ok(night.s.energy < h.s.energy - 30 && night.s.energy < 50, 'at night awake costs more');
+});
+
+test('the PC off for the night: she slept through it', () => {
+  const h = fresh({ energy: 20, at: Date.now() - 8 * 3600000 });
+  h.catchUp();
+  assert.equal(h.s.energy, 100);
+});
+
+test('woken too soon: no rest, and crankier each time', () => {
+  const h = fresh({ energy: 30 });
+  h.asleep();
+  assert.equal(h.woken().cranky, 1);
+  h.asleep();
+  assert.equal(h.woken().cranky, 2);
+  h.asleep();
+  const m = h.s.mood;
+  assert.equal(h.woken().cranky, 3);
+  assert.ok(h.s.mood < m && h.stress > 10);
+  const rested = fresh({ energy: 80 });
+  rested.asleep();
+  assert.equal(rested.woken().cranky, 0); // full of energy: waking her is fine
+});
+
+test('six levels of energy, and how soon she dozes off', () => {
+  assert.equal(fresh({ energy: 95 }).energyLevel, 'electric');
+  assert.equal(fresh({ energy: 40 }).energyLevel, 'tired');
+  assert.equal(fresh({ energy: 10 }).energyLevel, 'drained');
+  assert.ok(fresh({ energy: 10 }).sleepAfter() < fresh({ energy: 95 }).sleepAfter());
+  assert.match(fresh({ energy: 25 }).persona(), /exhausted/);
+});

@@ -495,13 +495,39 @@ function updatesStart() {
   try { updater = require('electron-updater').autoUpdater; } catch { return; }
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
-  updater.on('update-available', (info) => overlay?.webContents.send('update:available', { version: info.version }));
+  updater.on('update-available', (info) => { if (!manualUpdate.on) overlay?.webContents.send('update:available', { version: info.version }); });
   updater.on('download-progress', (p) => overlay?.webContents.send('update:progress', { percent: Math.round(p.percent) }));
   updater.on('update-downloaded', () => setTimeout(() => updater.quitAndInstall(true, true), 1500));
   updater.on('error', (err) => overlay?.webContents.send('update:error', { error: String(err?.message || err).slice(0, 200) }));
   const look = () => updater.checkForUpdates().catch(() => {});
   setTimeout(look, 60000);
   setInterval(look, 6 * 3600000);
+}
+
+// Her menu › Look for updates: the same, with Windows' own dialogs (if her chat isn't there to ask)
+async function manualUpdate(t) {
+  if (!updater) {
+    dialog.showMessageBox({ type: 'info', message: t.updateDev, buttons: ['OK'] });
+    return;
+  }
+  manualUpdate.on = true;
+  try {
+    const r = await updater.checkForUpdates();
+    const next = r?.updateInfo?.version;
+    const newer = next && next.localeCompare(app.getVersion(), undefined, { numeric: true }) > 0;
+    if (!newer) {
+      dialog.showMessageBox({ type: 'info', message: t.updateNone.replace('{version}', app.getVersion()), buttons: ['OK'] });
+      return;
+    }
+    const ok = await dialog.showMessageBox({ type: 'question', message: t.updateAsk.replace('{next}', next).replace('{version}', app.getVersion()), buttons: [t.updateYes, t.updateNo], defaultId: 0, cancelId: 1 });
+    if (ok.response !== 0) return;
+    tray?.setToolTip(t.updateDownloading);
+    await updater.downloadUpdate(); // then 'update-downloaded': installs and comes back
+  } catch (err) {
+    dialog.showErrorBox('Capri', `${t.updateFailed} ${err.message}`);
+  } finally {
+    manualUpdate.on = false;
+  }
 }
 
 // ---- Backup: everything of hers in a folder of yours, and back (a new PC, a reinstall) ----
@@ -1165,6 +1191,7 @@ function rebuildTray() {
     { label: t.corner, click: () => openCorner() },
     { label: (cfg.apiKeys || {}).gemini ? t.geminiOn : t.geminiKey, click: () => sendCommand('geminiKey') },
     { label: t.tabsExt, click: () => installExtension() },
+    { label: t.updateCheck, click: () => manualUpdate(t) },
     { label: t.backup, submenu: [
       { label: t.backupExport, click: async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.backupExport, properties: ['openDirectory', 'createDirectory'] });

@@ -1,7 +1,10 @@
 // Her heart: how she is inside, the one thing all the rest of her feeds and reads.
 //
-//   energy   0–100  the hour (low deep in the night, back up in the morning), your battery, the
-//                   processor burning, music, petting and good news lift it, a long day wears it down
+//   energy   0–100  a battery: drains while she's awake (faster at night, faster the more she does:
+//                   walking, hopping, dancing, teleporting) and refills only while she sleeps (a
+//                   nap on your PC, or the PC off or unused). Woken up too soon, she doesn't refill,
+//                   and gets cranky; again and again, crankier. Six levels, from electric to drained,
+//                   each showing in how she talks, plays, complains, yawns, and how soon she dozes off
 //   mood     0–100  how she feels: lifted by kind words, petting, your wins, music, a sunny day, you
 //                   coming back; brought down by harsh words, being shooed or ignored, losses, errors.
 //                   It drifts back to her day's mood (base), not to the middle
@@ -49,6 +52,12 @@ const WORDS = [
   ['hurt', /\b(cala a boca|chata|burra|idiota|in[úu]til|odeio voc[êe]|some daqui|vai embora|shut up|stupid|useless|i hate you|go away|annoying)\b/i],
   ['sorry', /\b(desculpa|foi mal|perd[ãa]o|sorry|my bad)\b/i],
 ];
+
+// her energy, in levels: [name, from]
+const ENERGY_LEVELS = [['electric', 85], ['lively', 70], ['ok', 50], ['tired', 35], ['exhausted', 20], ['drained', 0]];
+// a minute of her: what being awake costs, what sleeping gives back (night: awake costs more, sleep gives more)
+const DRAIN = 0.12;      // per minute awake
+const REFILL = 1.4;      // per minute asleep (dozing down to her mask: deeper, more)
 
 export class Heart {
   constructor({ bond }) {
@@ -100,8 +109,9 @@ export class Heart {
     if (every && now - (this.last[kind] || 0) < every) return;
     this.last[kind] = now;
     const ease = (v, d) => (d > 0 ? d * Math.max(0.1, (100 - v) / 60) : d * Math.max(0.1, v / 60));
-    const cap = Math.min(100, this.target() + 20);
-    this.s.energy = Math.min(Math.max(cap, this.s.energy), clamp(this.s.energy + ease(this.s.energy, n[0] * k)));
+    // good things only perk her up a little: real energy comes back by sleeping
+    const de = n[0] > 0 && !['charging'].includes(kind) ? n[0] * 0.3 : n[0];
+    this.s.energy = clamp(this.s.energy + ease(this.s.energy, de * k));
     this.s.mood = clamp(this.s.mood + ease(this.s.mood, n[1] * k));
     this.s.boredom = clamp(this.s.boredom + n[2] * k);
     this.s.stress = clamp(this.s.stress + (n[3] || 0) * k);
@@ -133,11 +143,51 @@ export class Heart {
     return 80;
   }
 
-  // the time she was off: her energy follows the hour, her mood settles toward her day's, boredom fades
+  // what she does costs her (a hop, a teleport, a dance: capri.js tells, a little each)
+  exert(cost = 0.15) {
+    this.s.energy = clamp(this.s.energy - cost * this.nightFactor());
+  }
+
+  // late, awake costs more and sleep gives more
+  nightFactor() {
+    const h = new Date().getHours();
+    return h >= 23 || h < 6 ? 1.8 : h >= 21 ? 1.3 : 1;
+  }
+
+  get energyLevel() {
+    return ENERGY_LEVELS.find(([, from]) => this.s.energy >= from)[0];
+  }
+
+  // how long she stays awake with nothing going on before she dozes off (capri.js)
+  sleepAfter() {
+    return { electric: 20, lively: 14, ok: 10, tired: 6, exhausted: 3, drained: 2 }[this.energyLevel] * 60000;
+  }
+
+  // she fell asleep (capri.js)
+  asleep() {
+    this.sleptAt = Date.now();
+  }
+
+  // she was woken up (capri.js): too soon, and she didn't get her rest; again and again, crankier.
+  // { cranky: 0 (fine) … 3 (furious) }
+  woken() {
+    const slept = this.sleptAt ? Date.now() - this.sleptAt : Infinity;
+    this.sleptAt = 0;
+    const tooSoon = slept < 12 * 60000 && this.s.energy < 55;
+    if (!tooSoon) { this.wakes = []; return { cranky: 0 }; }
+    this.wakes = [...(this.wakes || []).filter((t) => Date.now() - t < 40 * 60000), Date.now()];
+    const cranky = Math.min(3, this.wakes.length);
+    this.s.mood = clamp(this.s.mood - 4 * cranky);
+    this.s.stress = clamp(this.s.stress + 6 * cranky);
+    this.save();
+    return { cranky };
+  }
+
+  // the time she was off (the PC off or unused): she slept through it, her mood settled, boredom faded
   catchUp() {
     const away = (Date.now() - (this.s.at || Date.now())) / 60000;
     if (away > 30) {
-      this.s.energy = this.target();
+      this.s.energy = clamp(this.s.energy + away * REFILL * 0.8);
       this.s.mood = this.s.base + (this.s.mood - this.s.base) * 0.3;
       this.s.boredom = 10;
       this.s.stress = Math.max(5, this.s.stress * 0.3);
@@ -148,8 +198,10 @@ export class Heart {
   // every minute: energy toward the hour's, mood toward her day's, her day's toward her mood (slowly),
   // boredom up while ignored, longing up while you're away, stress fading
   tick({ ignored = false } = {}) {
-    const t = this.target();
-    this.s.energy = clamp(this.s.energy + (t - this.s.energy) * 0.05);
+    // her battery: refilling while she sleeps (deeper down to her mask), draining while she's awake
+    const sleep = this.sleeping?.() || 0; // 0 awake, 1 asleep, 2 dozing down to her mask
+    if (sleep) this.s.energy = clamp(this.s.energy + REFILL * (sleep === 2 ? 1.3 : 1) * this.nightFactor());
+    else this.s.energy = clamp(this.s.energy - DRAIN * this.nightFactor());
     this.s.mood = clamp(this.s.mood + (this.s.base - this.s.mood) * 0.02);
     this.s.base = clamp(this.s.base + (this.s.mood - this.s.base) * 0.003, 35, 75);
     if (ignored || this.ignored?.()) {
@@ -184,6 +236,18 @@ export class Heart {
     return 'content';
   }
 
+  // for her AI: her energy, in words (her answers' length and spark follow it)
+  energyPersona() {
+    return {
+      electric: 'Your energy: electric, bouncing off the walls: you talk fast and a lot, excited, playful',
+      lively: 'Your energy: lively and up for anything',
+      ok: '',
+      tired: 'Your energy: tired: shorter answers, less playful, a yawn now and then',
+      exhausted: 'Your energy: exhausted: short, dry answers, you complain you need sleep, little patience for games',
+      drained: 'Your energy: completely drained: a few words at most, flat, grumbling, you can barely keep your eyes open and want to sleep',
+    }[this.energyLevel];
+  }
+
   // for her AI: how she is right now, so her lines and her chat sound like it
   persona() {
     const style = {
@@ -205,7 +269,8 @@ export class Heart {
     if (this.s.base > 65) extra.push('it has been a good day for you');
     else if (this.s.base < 45) extra.push('it has been a rough day for you');
     if (new Date().getHours() < 5 && new Date().getHours() >= 1 && !this.away?.()) extra.push('it is very late and the user is still up: you nudge them to sleep');
-    return `How you feel inside right now: ${style}${extra.length ? `; ${extra.join('; ')}` : ''}. Let it show in how you talk, without naming it or giving numbers.`;
+    const energy = this.energyPersona();
+    return `How you feel inside right now: ${style}${extra.length ? `; ${extra.join('; ')}` : ''}.${energy ? ` ${energy}.` : ''} Let it show in how you talk, without naming it or giving numbers.`;
   }
 
   // a few words about it (converse.js, her diary)
@@ -230,14 +295,15 @@ export class Heart {
   // (lower: talks more)
   get chattiness() {
     const st = this.state;
+    const tired = { electric: 0.85, lively: 0.95, ok: 1, tired: 1.2, exhausted: 1.5, drained: 1.9 }[this.energyLevel];
     const base = 1.3 - this.s.energy / 200 - this.s.boredom / 250;
     const k = { playful: 0.8, radiant: 0.8, missing: 0.8, bored: 0.85, sad: 1.6, down: 1.3, tired: 1.4, sleepy: 1.6, calm: 1.2, grumpy: 1.1, anxious: 1.1 }[st] || 1;
-    return Math.max(0.6, Math.min(2, base * k));
+    return Math.max(0.6, Math.min(2.2, base * k * tired));
   }
 
   // one line for her menu
   label(t) {
-    return `${t.heartState[this.state] || this.state} · ⚡${this.energy} ♥${this.mood}`;
+    return `${t.heartState[this.state] || this.state} · ${t.energyLevel?.[this.energyLevel] || ''} ⚡${this.energy} ♥${this.mood}`;
   }
 }
 

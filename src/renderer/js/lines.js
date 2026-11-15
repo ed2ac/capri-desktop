@@ -1104,6 +1104,16 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // her energy (heart.js): its levels, her yawns, being woken too soon
+    energyLevel: { electric: 'Electric', lively: 'Lively', ok: 'Rested', tired: 'Tired', exhausted: 'Exhausted', drained: 'Drained' },
+    energy: {
+      yawn: { tired: ['*yawn* …I could use a nap.', 'Getting sleepy over here.'], exhausted: ['I’m so tired, choom…', 'My eyes keep closing. Let me nap a bit?'], drained: ['…can’t. Sleep. Now.', 'Running on fumes… let me sleep, please.'] },
+      woken: {
+        1: ['Mm… I was sleeping, you know.', 'Hm? I’d just dozed off…'],
+        2: ['Again? I need my sleep, choom.', 'Let me sleep! I won’t recharge like this.'],
+        3: ['SERIOUSLY. Let. Me. Sleep.', 'Every time I close my eyes… I’m getting really cranky.'],
+      },
+    },
     // her updates (main updatesStart)
     update: { ask: 'There’s a new version of me ({version}). Update now? I’ll be back in a minute.', yes: 'Update', later: 'Later', downloading: 'Downloading my upgrade… I’ll restart on my own.', failed: 'My update didn’t work: {error}' },
     // checking what she learned (memory.js)
@@ -2382,6 +2392,16 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // a energia dela (heart.js): os níveis, os bocejos, ser acordada cedo demais
+    energyLevel: { electric: 'Elétrica', lively: 'Animada', ok: 'Disposta', tired: 'Cansada', exhausted: 'Exausta', drained: 'Esgotada' },
+    energy: {
+      yawn: { tired: ['*bocejo* …um cochilo caía bem.', 'Tô ficando com sono aqui.'], exhausted: ['Tô tão cansada, choom…', 'Meus olhos tão fechando sozinhos. Deixa eu cochilar?'], drained: ['…não dá. Sono. Agora.', 'Tô no osso… me deixa dormir, por favor.'] },
+      woken: {
+        1: ['Hm… eu tava dormindo, sabia?', 'Hã? Eu tinha acabado de pegar no sono…'],
+        2: ['De novo? Eu preciso dormir, choom.', 'Me deixa dormir! Assim eu não recarrego.'],
+        3: ['SÉRIO. Me. Deixa. Dormir.', 'Toda vez que eu fecho o olho… tô ficando muito irritada.'],
+      },
+    },
     // as atualizações dela (main updatesStart)
     update: { ask: 'Tem uma versão nova minha ({version}). Atualizo agora? Volto em um minutinho.', yes: 'Atualizar', later: 'Depois', downloading: 'Baixando meu upgrade… eu reinicio sozinha.', failed: 'Minha atualização não deu certo: {error}' },
     // conferindo o que ela aprendeu (memory.js)
@@ -3121,7 +3141,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini', 'light', 'memoryCheck', 'update']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini', 'light', 'memoryCheck', 'update', 'energyLevel', 'energy']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

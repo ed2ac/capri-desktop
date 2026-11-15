@@ -695,6 +695,21 @@ async function boot() {
   life.art = art;
   const presence = new Presence({ capri, panel, brain, host, camera, look, play, shell, life, heart, voice, chat, guide, art, face, hands: chat.hands });
   heart.away = () => presence.away; // her longing grows while you're away (heart.js)
+  // her energy, a battery: sleeping refills it, being awake and moving drains it (heart.js)
+  heart.sleeping = () => (capri.dormant ? 2 : capri.mode === 'sleep' ? 1 : 0);
+  capri.sleepAfter = () => heart.sleepAfter();
+  capri.onExert = (cost) => heart.exert(cost);
+  capri.onAsleep = () => heart.asleep();
+  capri.onWoke = () => {
+    const { cranky } = heart.woken();
+    if (!cranky) return;
+    const lines = brain.t.energy?.woken?.[cranky];
+    setTimeout(() => {
+      if (!lines || chat.open) return;
+      capri.perform(cranky >= 2 ? 'huff' : 'stretch', capri.towardCenter());
+      panel.say({ kind: 'info', face: cranky >= 2 ? 'aside' : 'look', line: pick(lines), hold: 4500 });
+    }, 1200);
+  };
   if (!chat.heart) chat.heart = heart;
   if (!daily.heart) daily.heart = heart;
   brain.presence = presence;

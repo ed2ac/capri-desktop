@@ -595,7 +595,8 @@ export class Capri {
       this.gaze();
     }
 
-    if (this.mode === 'idle' && now - this.lastActivity > SLEEP_AFTER) this.setMode('sleep');
+    // how soon she dozes off depends on her energy (heart.js): drained, in a couple of minutes
+    if (this.mode === 'idle' && now - this.lastActivity > (this.sleepAfter?.() ?? SLEEP_AFTER)) this.setMode('sleep');
     if (this.mode === 'sleep' && now - this.sleptAt > DOZE_AFTER) {
       this.doze();
       return;
@@ -745,6 +746,7 @@ export class Capri {
     if (SPUN.has(this.stance) && name !== 'grabbed') return Promise.resolve(); // held, flying or knocked down: not now
     if (this.lounge && !LYING_ACTS.has(name)) return this.getUp().then(() => this.perform(name, dir, { reach }));
     const act = ACTS[name];
+    this.onExert?.(['spin', 'split', 'leap', 'victory', 'stretch', 'hop'].includes(name) ? 0.12 : 0.04);
     if (reducedMotion.matches && act.fps === 24) {
       if (act.flip) this.facing *= -1;
       return Promise.resolve();
@@ -805,6 +807,8 @@ export class Capri {
     const prev = this.mode;
     this.mode = mode;
     if (mode === 'sleep') this.sleptAt = now;
+    if (mode === 'sleep') this.onAsleep?.();
+    if (prev === 'sleep') this.onWoke?.(); // woken: too soon, and she didn't get her rest (heart.js)
     if (mode !== 'idle' && mode !== 'sleep') this.getUp(); // something's going on: no lying around
     this.onMode?.(mode, prev);
     if (this.stance === 'stand') this.base = this.restBase();
@@ -1337,6 +1341,7 @@ export class Capri {
 
   // Leave in a column of light, reappear somewhere else.
   async teleport(to, opts = {}) {
+    this.onExert?.(0.3); // her moves cost her energy (heart.js)
     if (this.stowed) return; // put away: she stays in her biochip
     if (this.busy || this.dormant) {
       this.pending = { to, opts };

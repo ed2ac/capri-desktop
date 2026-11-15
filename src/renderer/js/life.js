@@ -103,6 +103,8 @@ export class Life {
       ['stars', night || h.mood < 40 ? 1.5 : 0.4],
       ['muse', Date.now() - this.mutterAt > 15 * 60000 ? 0.8 : 0],
       ['read', 0.6],
+      // tired: yawns, stretches, a grumble about sleep
+      ['yawn', ({ tired: 1.5, exhausted: 3, drained: 4 })[this.heart?.energyLevel] || 0],
     ].filter(([, w]) => w > 0));
   }
 
@@ -297,6 +299,16 @@ export class Life {
     const h = c.head();
     this.float('📖', h.x + 20 * c.facing, h.y + 30, 9000, { size: 30, still: true });
     for (let i = 1; i <= 3; i++) setTimeout(() => !c.busy && c.mode === 'idle' && this.float(pick(['…', '?', '!', '♪']), h.x + rand(-10, 40), h.y - 30, 1800), i * 2600);
+  }
+
+  // tired: a yawn, a stretch, sometimes a grumble about needing sleep
+  yawn() {
+    const c = this.capri;
+    c.perform(Math.random() < 0.5 ? 'stretch' : 'look', c.towardCenter());
+    const h = c.head();
+    this.float(pick(['…z', 'z', '~', '…']), h.x + 20, h.y - 30, 2000);
+    const lines = this.brain.t.energy?.yawn;
+    if (lines && Math.random() < 0.35) this.panel.say({ kind: 'idle', face: 'aside', line: pick(lines[this.heart?.energyLevel] || lines.tired), hold: 3500 });
   }
 
   // a word to herself, now and then
