@@ -31,3 +31,17 @@ test('her start never uses a module before it is made', () => {
   });
   assert.deepEqual(early, []);
 });
+
+// "Identifier 'senses' has already been declared": one name declared twice in her start stops all of it
+test('no name declared twice in her start', () => {
+  const app = fs.readFileSync(new URL('../../src/renderer/js/app.js', import.meta.url), 'utf8').split('\n');
+  const seen = new Map();
+  const twice = [];
+  app.forEach((l, i) => {
+    const m = /^ {2}(?:const|let|function|class) (\w+)\b/.exec(l);
+    if (!m) return;
+    if (seen.has(m[1])) twice.push(`${m[1]}: lines ${seen.get(m[1]) + 1} and ${i + 1}`);
+    else seen.set(m[1], i);
+  });
+  assert.deepEqual(twice, []);
+});

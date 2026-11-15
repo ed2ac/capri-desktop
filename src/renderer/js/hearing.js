@@ -121,7 +121,7 @@ export class Hearing {
   }
 
   async start() {
-    if (this.stream || this.paused || !this.on) return;
+    if (this.stream || this.paused || this.asleep || !this.on) return;
     try {
       // the room as it is: no noise suppression, it would take out what she wants to hear
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: false, echoCancellation: false, autoGainControl: true }, video: false });

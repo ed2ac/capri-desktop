@@ -129,7 +129,7 @@ export class LockWatch {
     this.camera?.setRate?.(this.presence?.away ? 2000 : null);
     if (!lines.length) {
       // nobody seen, and she was asleep: the camera rests again
-      if (this.presence?.state === 'asleep' && this.camera?.stream) {
+      if ((this.presence?.state === 'asleep' || this.capri.mode === 'sleep' || this.capri.dormant === true) && this.camera?.stream) {
         this.camera.napping = true;
         this.camera.stop({ keep: true });
       }

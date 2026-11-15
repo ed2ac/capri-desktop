@@ -56,7 +56,7 @@ export class Converse {
   ready() {
     if (!this.on || !this.allowed || this.noKey || this.listening) return false;
     if (this.mic?.rec || this.mic?.asking || this.guide?.running) return false;
-    if (this.presence?.away || this.capri.stowed || this.paused) return false;
+    if (this.presence?.away || this.capri.stowed || this.paused || this.capri.mode === 'sleep' || this.capri.dormant === true) return false;
     return true;
   }
 

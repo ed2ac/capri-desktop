@@ -348,7 +348,7 @@ export class Chat {
       host.setConfig({ visible: true });
       await capri.unstow();
     }
-    capri.wake();
+    capri.wake(true); // you opened her chat: you woke her
     const status = await host.chatStatus();
     if (!status.ok && this.onSetup) {
       this.onSetup(status); // nothing to talk with yet: she sets it up with you, with buttons (setup.js)

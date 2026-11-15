@@ -84,7 +84,7 @@ export class Mic {
     this.rec = { recorder, stream, ctx, watch, chunks, spoke: () => spoke };
     recorder.start(250);
     this.voice.play('tick');
-    this.capri.wake();
+    this.capri.wake(true); // your shortcut: you woke her
     this.capri.perform('curious', this.capri.towardCenter());
     this.panel.setTicker({ verb: '🎙', target: this.t.listening });
   }

@@ -112,9 +112,16 @@ export class Life {
     if (this.holding() || this.watching) return; // she stays where your click is going; or she's watching with you (watch.js)
     if (this.light && Math.random() < 0.6) return; // light mode (light.js): she moves less
     this.lastMove = performance.now();
-    this.capri.lastActivity = performance.now(); // what she does counts as doing something
+    const level = this.heart?.energyLevel;
+    const tired = ['tired', 'exhausted', 'drained'].includes(level);
+    // what she does counts as doing something; tired, her own little things don't keep her awake
+    if (!tired) this.capri.lastActivity = performance.now();
     this.homeIn = rand(120000, 240000);
     const c = this.capri;
+    // exhausted or drained: mostly she just rests, or dozes off
+    if (level === 'drained' && Math.random() < 0.85) return Math.random() < 0.5 ? this.nap() : undefined;
+    if (level === 'exhausted' && Math.random() < 0.6) return Math.random() < 0.4 ? this.nap() : undefined;
+    if (c.lounge && tired) return undefined; // lying down, tired: she stays lying down
     if (!c.wander || c.stance === 'peek' || c.lounge || this.play?.game) return this.base();
     const list = this.choices();
     let r = Math.random() * list.reduce((s, [, w]) => s + w, 0);
@@ -263,11 +270,18 @@ export class Life {
   }
 
   // drained: a nap (on her ledge she lies down, else she dozes where she is)
+  // a real nap: she lies down (on her ledge) or stretches, and falls asleep; her energy refills
+  // while she sleeps (heart.js), and asleep a while she dozes down to her mask (capri.js)
   nap() {
     const c = this.capri;
-    if (c.stance === 'sit') return c.lieDown?.();
+    if (c.busy || c.mode !== 'idle') return undefined;
+    const sleep = () => { if (c.mode === 'idle' && !c.busy && !this.holding()) c.setMode('sleep'); };
+    if (c.stance === 'sit') {
+      Promise.resolve(c.lieDown?.()).then(() => setTimeout(sleep, 800)).catch(() => {});
+      return undefined;
+    }
     c.perform('stretch');
-    return setTimeout(() => c.mode === 'idle' && !c.busy && c.doze?.(), 1500);
+    return setTimeout(sleep, 1500);
   }
 
   stars() {

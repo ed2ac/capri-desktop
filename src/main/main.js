@@ -2639,6 +2639,12 @@ function main() {
       port: PORT,
       onTabs: (ws) => tabs.attach(ws),
       onMcp: (body) => onMcp(body),
+      onState: () => overlay?.webContents.executeJavaScript(`(() => { const d = window.dev; if (!d) return null; const c = d.capri;
+        return { version: '${app.getVersion()}', mode: c.mode, stance: c.stance, busy: c.busy, busyBy: c.busyBy, busyFor: c.busy ? Math.round((performance.now() - c.busySince) / 1000) : 0,
+          dormant: c.dormant, lounge: Boolean(c.lounge), wander: c.wander, restOn: c.restOn, idleFor: Math.round((performance.now() - c.lastActivity) / 1000), sleepAfter: Math.round((c.sleepAfter?.() || 0) / 1000),
+          energy: d.heart.energy, level: d.heart.energyLevel, state: d.heart.state, presence: d.presence.state, holding: d.life.holding(), guide: d.guide.running,
+          panel: d.panel.current ? { kind: d.panel.current.kind, actions: (d.panel.current.actions || []).length, guide: Boolean(d.panel.current.guide) } : null,
+          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`),
       onSpotify: async (query) => {
         const r = await spotify.callback(query);
         if (r.ok) {

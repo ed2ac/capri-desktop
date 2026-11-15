@@ -37,7 +37,7 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onGate, onDebug, onTabs, onMcp, onSpotify }) {
+function createBridge({ port, onEvent, onGate, onDebug, onTabs, onMcp, onSpotify, onState }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
@@ -51,6 +51,12 @@ function createBridge({ port, onEvent, onGate, onDebug, onTabs, onMcp, onSpotify
       const html = `<!doctype html><meta charset="utf-8"><title>Capri</title><body style="background:#14101c;color:#f1eaf8;font:600 20px system-ui;display:grid;place-items:center;height:100vh;margin:0"><p>${r.ok ? 'Spotify ligado! Pode fechar esta aba e voltar pra Capri.' : 'Não deu certo. Tenta de novo pelo menu da Capri.'}</p></body>`;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(html) });
       return res.end(html);
+    }
+
+    // how she is right now (mode, stance, energy, what holds her): read-only, for finding a bug as it
+    // happens without restarting her
+    if (req.method === 'GET' && url.pathname === '/state' && onState) {
+      return send(res, 200, (await onState().catch((err) => ({ error: err.message }))) || {});
     }
 
     if (req.method === 'GET' && url.pathname === '/health') {

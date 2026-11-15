@@ -78,3 +78,31 @@ test('tired, away or asleep: Claude\'s steps aren\'t followed, only its answer',
   assert.equal(brain.sessions.get('a').count, 1);
   assert.deepEqual(brain.later.map((l) => l.text), ['Pronto.']);
 });
+
+test('drained: her own little things don\'t keep her awake, and a nap is real sleep', async () => {
+  const { Life } = await import(R('life'));
+  const life = Object.create(Life.prototype);
+  const capri = { mode: 'idle', busy: false, stance: 'stand', wander: true, lastActivity: 0, perform() {}, setMode(m) { this.mode = m; }, windows: { wins: [] }, view: { w: 1920 }, head: () => ({ x: 0, y: 0 }), towardCenter: () => 1 };
+  Object.assign(life, { capri, heart: { energyLevel: 'drained', energy: 10, mood: 50, boredom: 10 }, panel: { current: null }, guide: { running: false }, base() {}, choices: () => [['classic', 1]] });
+  for (let i = 0; i < 20; i++) life.step();
+  assert.equal(capri.lastActivity, 0, 'her own steps left the clock alone');
+  capri.mode = 'idle';
+  life.nap();
+  await new Promise((r) => { setTimeout(r, 1700).ref?.(); });
+  assert.equal(capri.mode, 'sleep');
+});
+
+test('asleep, only you (or a reminder) wake her; anything else lets her sleep on', async () => {
+  const { Capri } = await import(R('capri'));
+  const c = Object.create(Capri.prototype);
+  Object.assign(c, { _busy: false, mode: 'sleep', dormant: false, lastActivity: 0, setMode(m) { this.mode = m; }, rouse() { this.dormant = false; } });
+  c.wake(); // Claude done, a notice…
+  assert.equal(c.mode, 'sleep');
+  c.wake(true); // the pointer on her
+  assert.equal(c.mode, 'idle');
+  Object.assign(c, { mode: 'idle', dormant: true });
+  c.wake();
+  assert.equal(c.dormant, true);
+  c.wake(true);
+  assert.equal(c.dormant, false);
+});

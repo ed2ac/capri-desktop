@@ -129,7 +129,7 @@ export class Brain {
       if (this.capri.mode === 'work') this.capri.setMode('idle'); // no working pose: she may rest
       return undefined;
     }
-    if (quiet && asleep && name === 'Stop') {
+    if ((asleep || this.hushed) && name === 'Stop') { // nobody there to read it (or she's asleep): kept for later
       // asleep: she sleeps on; when she wakes (or you're back), she tells you
       if (!this.presence?.claudeDone(evt.last_assistant_message, s.project)) this.later = [...(this.later || []), { text: evt.last_assistant_message, project: s.project }].slice(-5);
       s.working = false;

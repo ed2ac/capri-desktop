@@ -170,7 +170,7 @@ async function boot() {
     } else if (!wakeTimer) {
       wakeTimer = setTimeout(() => {
         wakeTimer = 0;
-        if (capri.dormant) capri.wake();
+        if (capri.dormant) capri.wake(true); // the pointer on her mask a moment: you woke her
       }, 400);
     }
   };
@@ -495,7 +495,7 @@ async function boot() {
       host.setConfig({ visible: true });
       await capri.unstow();
     }
-    capri.wake();
+    capri.wake(true); // a reminder: worth waking her for
     await until(() => !capri.busy && !capri.dragging, 8000);
     await capri.toPointer(await host.cursor().catch(() => null));
     capri.perform('hop');
@@ -537,7 +537,7 @@ async function boot() {
     const caption = (line) => panel.say({ kind: 'info', line, hold: 2200 });
     capri.nextMove = capri.nextGaze = performance.now() + 120000; // nothing of her own in between
     if (capri.stowed) await capri.unstow();
-    if (capri.dormant) capri.wake();
+    if (capri.dormant) capri.wake(true);
     await until(free);
     panel.hide();
 
@@ -699,10 +699,25 @@ async function boot() {
   heart.sleeping = () => (capri.dormant ? 2 : capri.mode === 'sleep' ? 1 : 0);
   capri.sleepAfter = () => heart.sleepAfter();
   capri.onExert = (cost) => heart.exert(cost);
-  capri.onAsleep = () => heart.asleep();
+  // asleep: her camera, her ears (the room and her name), her talks, all off until you wake her
+  const restSenses = (asleep) => {
+    if (asleep) {
+      if (camera.stream && !lockWatch.on) { camera.napping = true; camera.stop({ keep: true }); }
+      hearing.asleep = true;
+      hearing.stop?.();
+      host.wakePause?.(true);
+    } else {
+      if (camera.napping && !presence.away) { camera.napping = false; if (camera.on && !camera.paused) camera.start().catch(() => {}); }
+      hearing.asleep = false;
+      if (hearing.on && !hearing.paused) hearing.start?.();
+      host.wakePause?.(false);
+    }
+  };
+  capri.onAsleep = () => { heart.asleep(); restSenses(true); };
   // tired: Claude's process isn't hers to follow, only its answers (brain.js)
   brain.tiredQuiet = () => ['tired', 'exhausted', 'drained'].includes(heart.energyLevel);
   capri.onWoke = () => {
+    restSenses(false);
     // what Claude finished while she slept
     const later = (brain.later || []).splice(0);
     if (later.length) {
@@ -716,7 +731,8 @@ async function boot() {
     if (!cranky) return;
     const lines = brain.t.energy?.woken?.[cranky];
     setTimeout(() => {
-      if (!lines || chat.open) return;
+      // a question of hers (or yours) on screen comes first: her grumble doesn't cover it
+      if (!lines || chat.open || guide.running || panel.current?.guide || panel.current?.actions?.length) return;
       capri.perform(cranky >= 2 ? 'huff' : 'stretch', capri.towardCenter());
       panel.say({ kind: 'info', face: cranky >= 2 ? 'aside' : 'look', line: pick(lines), hold: 4500 });
     }, 1200);

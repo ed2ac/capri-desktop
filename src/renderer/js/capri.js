@@ -817,7 +817,10 @@ export class Capri {
     else tween(p, { alpha: 1, sparkle: 1, boil: 0.9 }, 250, ease.out);
   }
 
-  wake() {
+  // Woken up. Asleep, only by you (the pointer on her, a click, her chat, your shortcut), a reminder,
+  // or something she's already doing: those call wake(true). Anything else lets her sleep on.
+  wake(force = false) {
+    if (!force && (this.mode === 'sleep' || this.dormant)) return;
     if (this.mode === 'sleep') this.setMode('idle');
     this.lastActivity = performance.now();
     if (this.dormant) this.rouse(); // down to her mask: she comes back
@@ -1349,7 +1352,7 @@ export class Capri {
       return;
     }
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     const fromHead = await this.vanish();
     await sleep(70);
@@ -1522,7 +1525,7 @@ export class Capri {
     const win = this.windows.wins.find((w) => w.id === id);
     const entry = this.pos.x - win.x;
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     await this.perform('dive');
     const head = await this.vanish({ beam: false });
@@ -1586,7 +1589,7 @@ export class Capri {
     }
 
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     if (this.p.alpha > 0) await this.vanish();
     this.pos = { ...from };
@@ -2431,7 +2434,7 @@ export class Capri {
     if (this.busy || this.stowed || this.dormant || this.hidden || this.dragging || reducedMotion.matches) return false;
     if (this.stance !== 'stand' && this.stance !== 'sit') return false;
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     this.stopPointing();
     this.endAct(false);
@@ -2467,7 +2470,7 @@ export class Capri {
     if (this.dormant) await this.rouse();
     for (let i = 0; (this.busy || this.dragging) && i < 40; i++) await sleep(100);
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     await this.vanish();
     this.root.hidden = true;
@@ -2523,7 +2526,7 @@ export class Capri {
   async visit(at) {
     if (!this.free || reducedMotion.matches) return false;
     this.busy = true;
-    this.wake();
+    this.wake(true);
     this.onTeleport?.('start');
     await this.perform('dive');
     const head = await this.vanish({ beam: false });
@@ -2699,7 +2702,7 @@ export class Capri {
     const h = this.head();
     if (Math.hypot(x - h.x, y - h.y) > 230) return;
     const now = performance.now();
-    if (this.mode === 'sleep') this.wake();
+    if (this.mode === 'sleep') this.wake(true); // the pointer at her face: you woke her
     if (now < this.nextNotice) return;
     this.nextNotice = now + 15000;
     if (this.stance === 'peek') {

@@ -99,7 +99,7 @@ export class Guide {
       this.host.setConfig({ visible: true });
       await capri.unstow();
     }
-    capri.wake();
+    capri.wake(true); // her scenes are what you opened (or what matters)
     this.running = true;
     capri.nextMove = capri.nextGaze = performance.now() + IDLE_FOR;
     try {
