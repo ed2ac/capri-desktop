@@ -2136,8 +2136,9 @@ function registerIpc() {
   });
   // a Gemini key for her camera only (her chat stays where it is): saved encrypted, tried, kept if it works
   ipcMain.handle('vision:key', async (_e, key) => {
-    const k = String(key || '').trim();
-    if (!/^AIza[\w-]{30,}$/.test(k)) return { ok: false, error: 'format' };
+    // any of Google's key formats (the older AIza…, the newer AQ.…): Google itself says if it works
+    const k = String(key || '').trim().replace(/^["'“”]+|["'“”]+$/g, '');
+    if (!/^[\w.\-]{20,300}$/.test(k)) return { ok: false, error: 'format' };
     const before = config.load();
     config.save({ apiKeys: { ...before.apiKeys, gemini: setup.sealKey(k) } });
     const list = await llm.models('gemini', llmConfig(config.load())).catch(() => null);
