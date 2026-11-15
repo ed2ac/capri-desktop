@@ -59,3 +59,22 @@ test('stuck busy: her watchdog frees her (a left click and a drag work again)', 
   assert.equal(c.p.alpha, 1);
   assert.ok(stuck !== null);
 });
+
+test('tired, away or asleep: Claude\'s steps aren\'t followed, only its answer', async () => {
+  const { Brain } = await import(R('brain'));
+  const said = [];
+  let woke = 0;
+  const capri = { windows: { fg: null, wins: [] }, mode: 'sleep', dormant: false, wake() { woke++; }, attend() { woke++; }, setMode(m) { this.mode = m; }, goToWork() { this.mode = 'work'; } };
+  const brain = Object.create(Brain.prototype);
+  Object.assign(brain, { capri, panel: { say: (m) => said.push(m), setTicker() {}, clearKind() {} }, sessions: new Map(), watching: true, linked: true, assistant: 'claude', presence: { claudeDone: () => false } });
+  brain.tiredQuiet = () => false;
+  brain.session = (evt) => { if (!brain.sessions.has(evt.session_id)) brain.sessions.set(evt.session_id, { files: new Set(), log: [] }); return brain.sessions.get(evt.session_id); };
+  Object.defineProperty(brain, 'busySessions', { get: () => [] });
+  brain.handle({ hook_event_name: 'UserPromptSubmit', session_id: 'a', prompt: 'x' });
+  brain.handle({ hook_event_name: 'PreToolUse', session_id: 'a', tool_name: 'Edit', tool_input: { file_path: '/p/f.js' } });
+  brain.handle({ hook_event_name: 'Stop', session_id: 'a', last_assistant_message: 'Pronto.' });
+  assert.equal(woke, 0, 'asleep: nothing woke her');
+  assert.equal(said.length, 0);
+  assert.equal(brain.sessions.get('a').count, 1);
+  assert.deepEqual(brain.later.map((l) => l.text), ['Pronto.']);
+});

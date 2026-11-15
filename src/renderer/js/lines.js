@@ -1109,6 +1109,7 @@ export const LINES = {
     energyLevel: { electric: 'Electric', lively: 'Lively', ok: 'Rested', tired: 'Tired', exhausted: 'Exhausted', drained: 'Drained' },
     energy: {
       yawn: { tired: ['*yawn* …I could use a nap.', 'Getting sleepy over here.'], exhausted: ['I’m so tired, choom…', 'My eyes keep closing. Let me nap a bit?'], drained: ['…can’t. Sleep. Now.', 'Running on fumes… let me sleep, please.'] },
+      whileAsleep: 'While I napped, Claude finished:',
       woken: {
         1: ['Mm… I was sleeping, you know.', 'Hm? I’d just dozed off…'],
         2: ['Again? I need my sleep, choom.', 'Let me sleep! I won’t recharge like this.'],
@@ -2398,6 +2399,7 @@ export const LINES = {
     energyLevel: { electric: 'Elétrica', lively: 'Animada', ok: 'Disposta', tired: 'Cansada', exhausted: 'Exausta', drained: 'Esgotada' },
     energy: {
       yawn: { tired: ['*bocejo* …um cochilo caía bem.', 'Tô ficando com sono aqui.'], exhausted: ['Tô tão cansada, choom…', 'Meus olhos tão fechando sozinhos. Deixa eu cochilar?'], drained: ['…não dá. Sono. Agora.', 'Tô no osso… me deixa dormir, por favor.'] },
+      whileAsleep: 'Enquanto eu cochilava, o Claude terminou:',
       woken: {
         1: ['Hm… eu tava dormindo, sabia?', 'Hã? Eu tinha acabado de pegar no sono…'],
         2: ['De novo? Eu preciso dormir, choom.', 'Me deixa dormir! Assim eu não recarrego.'],

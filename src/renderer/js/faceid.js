@@ -247,6 +247,7 @@ export class FaceId {
 
   async tick() {
     if (!this.camera.on || !this.camera.stream || !this.known?.owner || this.busy) return;
+    if (this.looking) return; // she's looking at your screen: later
     if (this.light && (this.lightTicks = (this.lightTicks || 0) + 1) % 4) return; // light mode: a look every 12 s
     // nothing to recognize: the camera's own face finder (camera.js, far lighter) sees no face, and
     // whoever was there is already known gone

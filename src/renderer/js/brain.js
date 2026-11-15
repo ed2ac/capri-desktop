@@ -72,9 +72,14 @@ export class Brain {
     return [...this.sessions.values()].filter((s) => s.working);
   }
 
+  // not following Claude's every step: you're away, she's tired, or she's asleep (app.js sets tiredQuiet)
+  isQuiet() {
+    return Boolean(this.hushed || this.tiredQuiet?.() || this.capri.mode === 'sleep' || this.capri.dormant === true);
+  }
+
   say(kind, line, s, extra = {}) {
-    // you're away (presence.js): of Claude only its answer, and asleep not even that (kept for later)
-    if (this.hushed && !['done', 'alert', 'error'].includes(kind)) return false;
+    // quiet (away, tired, asleep): of Claude only its answer, its questions, its errors
+    if (this.isQuiet() && !['done', 'alert', 'error'].includes(kind)) return false;
     return this.panel.say({ kind, line, tag: s ? s.title || s.project : '', ...extra });
   }
 
@@ -104,13 +109,29 @@ export class Brain {
     }
     const s = this.session(evt);
     const name = evt.hook_event_name;
-    // these three put her somewhere themselves; anything else just brings her out of hiding
-    // away, Claude's steps don't call her over; asleep, only a question of Claude's wakes her
-    const asleep = this.hushed && this.presence?.state === 'asleep';
-    if (name === 'Notification' || (!this.hushed && (name === 'UserPromptSubmit' || name === 'Stop'))) this.capri.wake();
-    else if (!this.hushed) this.capri.attend();
-    if (asleep && name === 'Stop') {
-      this.presence.claudeDone(evt.last_assistant_message, s.project);
+    // these three put her somewhere themselves; anything else just brings her out of hiding.
+    // Quiet (you're away, she's tired, or asleep): Claude's process isn't hers to follow, only its
+    // answer when it's done; asleep, she sleeps on and tells you when she wakes. A question of
+    // Claude's (Notification) still wakes her: someone has to answer it.
+    const quiet = this.isQuiet();
+    const asleep = this.capri.mode === 'sleep' || this.capri.dormant === true;
+    if (name === 'Notification' || (!quiet && (name === 'UserPromptSubmit' || name === 'Stop'))) this.capri.wake();
+    else if (!quiet) this.capri.attend();
+    if (quiet && name !== 'Stop' && name !== 'StopFailure' && name !== 'Notification' && name !== 'SessionEnd') {
+      // counted, not followed: the summary at the end still knows what was done
+      if (name === 'UserPromptSubmit') Object.assign(s, { taskStart: Date.now(), count: 0, files: new Set(), log: [], working: true });
+      if (name === 'PreToolUse') {
+        s.working = true;
+        s.count = (s.count || 0) + 1;
+        const file = EDIT_TOOLS.has(evt.tool_name) && (evt.tool_input?.file_path || evt.tool_input?.notebook_path);
+        if (file) s.files?.add(file);
+      }
+      if (this.capri.mode === 'work') this.capri.setMode('idle'); // no working pose: she may rest
+      return undefined;
+    }
+    if (quiet && asleep && name === 'Stop') {
+      // asleep: she sleeps on; when she wakes (or you're back), she tells you
+      if (!this.presence?.claudeDone(evt.last_assistant_message, s.project)) this.later = [...(this.later || []), { text: evt.last_assistant_message, project: s.project }].slice(-5);
       s.working = false;
       if (!this.busySessions.length) this.panel.setTicker(null);
       return undefined;
@@ -395,7 +416,7 @@ export class Brain {
     this.panel.hide();
     // quick back-and-forth answers don't deserve the whole show
     const bigJob = s.count >= 3 || (s.taskStart && Date.now() - s.taskStart > 20000);
-    if (bigJob) await this.capri.teleport(this.capri.spot('stage'));
+    if (bigJob && !this.isQuiet()) await this.capri.teleport(this.capri.spot('stage')); // tired or alone: no show, just the answer
     // the panel comes in once she's back down from her victory pose
     this.capri.celebrate({ onSpeak: () => done({ summary, hold: 14000 }) });
     if (this.hushed) this.presence?.claudeDone(evt.last_assistant_message, s.project);

@@ -61,7 +61,7 @@ export class Gestures {
 
   // camera.js, each frame with a face: the video, the face's landmarks, its pose
   frame(video, face, pose, now = Date.now()) {
-    if (!this.on || this.light) return; // light mode (light.js): no gestures
+    if (!this.on || this.light || this.looking) return; // light mode (light.js), or she's looking at your screen: no gestures
     if (pose) this.onPose(pose, face, now);
     // no hand in sight a while: a look now and then; a hand: often (each look costs)
     const every = now - (this.handAt || 0) > 8000 ? 1200 : EVERY_MS;

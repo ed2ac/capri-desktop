@@ -700,7 +700,18 @@ async function boot() {
   capri.sleepAfter = () => heart.sleepAfter();
   capri.onExert = (cost) => heart.exert(cost);
   capri.onAsleep = () => heart.asleep();
+  // tired: Claude's process isn't hers to follow, only its answers (brain.js)
+  brain.tiredQuiet = () => ['tired', 'exhausted', 'drained'].includes(heart.energyLevel);
   capri.onWoke = () => {
+    // what Claude finished while she slept
+    const later = (brain.later || []).splice(0);
+    if (later.length) {
+      setTimeout(() => {
+        const e = brain.t.energy?.whileAsleep || 'Claude finished:';
+        const said = later.map((l) => `${l.project ? `${l.project}: ` : ''}“${String(l.text || '…').replace(/\s+/g, ' ').slice(0, 160)}”`).join('\n');
+        panel.say({ kind: 'done', face: 'look', line: `${e}\n${said}`, hold: 12000 });
+      }, 2500);
+    }
     const { cranky } = heart.woken();
     if (!cranky) return;
     const lines = brain.t.energy?.woken?.[cranky];
@@ -1011,6 +1022,12 @@ async function boot() {
   // light mode (light.js): in games by default, and whatever else you picked in her menu
   const light = new Light({ capri, panel, brain, host, camera, gestures, hearing, speech, look, converse, life, face, hands: chat.hands });
   light.configure(config);
+  // while she looks at your screen (her local model busy on the graphics card): her camera, hands
+  // and ears pause, as in light mode, then back to how they were
+  look.onLooking = (on) => {
+    for (const m of [camera, gestures, face, hearing]) m.looking = on;
+    camera.setRate?.(on ? 2500 : (light.on ? 2000 : camera.presenceRate ?? null));
+  };
   // her name: she perks up and listens to what you say next (mic.js)
   hearing.onWake = () => {
     if (mic.rec || mic.asking || chat.turn || guide.running) return;

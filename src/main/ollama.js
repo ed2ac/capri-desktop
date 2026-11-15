@@ -77,7 +77,7 @@ function warm(model) {
   fetch(`${base()}/api/generate`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model, keep_alive: '15m' }),
+    body: JSON.stringify({ model, keep_alive: '45m' }),
   }).catch(() => {});
 }
 
@@ -92,7 +92,7 @@ async function chat({ model, messages, options, keepAlive }, onDelta, signal) {
       model,
       messages,
       stream: true,
-      keep_alive: keepAlive || '15m', // she stays loaded while you chat
+      keep_alive: keepAlive || '45m', // she stays loaded a good while: loading her again is what stalls the PC
       ...(thinks && { think: 'low' }),
       options: { temperature: 0.85, num_predict: thinks ? 1200 : 240, ...options },
     }),

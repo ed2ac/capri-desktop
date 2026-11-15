@@ -130,6 +130,7 @@ export class Look {
   async now({ manual = false } = {}) {
     if (this.looking) return;
     this.looking = true;
+    this.onLooking?.(true); // her camera, hands and ears pause while she looks (the PC's busy enough)
     const t = this.t;
     try {
       if (manual) {
@@ -165,6 +166,7 @@ export class Look {
       this.panel.say({ kind: 'info', badge: this.brain.t.badges?.scan || 'SCAN', face: mood(text), line: text, hold: Math.min(13000, Math.max(5000, 2500 + text.length * 55)) });
     } finally {
       this.looking = false;
+      this.onLooking?.(false);
     }
   }
 }

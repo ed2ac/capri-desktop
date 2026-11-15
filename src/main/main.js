@@ -1132,7 +1132,7 @@ function regroupTray(t, items) {
     [t.groupSenses, [t.activity, t.lookAuto, t.senseInput, t.camera, t.pcReact, t.shellReact, t.pwshInstall, t.pwshRemove]],
     [t.groupBehavior, [t.chatty, t.pranks, t.wander, t.possess, t.jealous, t.closePages, t.aiLines, t.callQuiet, t.obsMode, t.rest]],
     [t.groupHealth, [t.breaks, t.eyeBreaks]],
-    [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.lightMode, t.mcpOn, t.githubWatch, t.watch]],
+    [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.lightMode, t.screenOnline, t.mcpOn, t.githubWatch, t.watch]],
     [t.groupLooks, [t.size, t.panelSize, t.theme, t.motion, t.display, t.sound, t.screen]],
   ];
   const taken = new Set();
@@ -1199,6 +1199,7 @@ function rebuildTray() {
       label: t.lightModes[k], type: 'checkbox', checked: Boolean({ games: true, ...(cfg.lightMode || {}) }[k]),
       click: (i) => updateConfig({ lightMode: { games: true, ...(config.load().lightMode || {}), [k]: i.checked } }),
     })) },
+    { label: t.screenOnline, type: 'checkbox', checked: cfg.screenOnline === true, enabled: Boolean((cfg.apiKeys || {}).gemini), click: (i) => updateConfig({ screenOnline: i.checked }) },
     { label: t.mcpOn, type: 'checkbox', checked: cfg.mcpOn !== false, click: (i) => updateConfig({ mcpOn: i.checked }) },
     { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
     { label: t.backup, submenu: [
@@ -1700,7 +1701,7 @@ async function snapScreen() {
     if (w > 200 && h > 150) img = img.crop({ x, y, width: w, height: h });
   }
   const { width } = img.getSize();
-  if (width > 1600) img = img.resize({ width: 1600, quality: 'better' });
+  if (width > 1280) img = img.resize({ width: 1280, quality: 'good' }); // her eyes see ~900 px anyway: less to send, quicker
   return img.toJPEG(80).toString('base64');
 }
 
@@ -1713,6 +1714,22 @@ async function sayAboutSnap({ id, persona, prompt, history = [] }) {
   // your screen stays on this PC: only her local model looks at it, even when her chat is online
   // (asked in her chat: the conversation so far comes before it, text only)
   const before = (Array.isArray(history) ? history : []).filter((m) => typeof m?.content === 'string' && ['user', 'assistant'].includes(m.role)).slice(-12);
+  // her menu › Look at my screen through Gemini (off unless you turn it on): quicker and nothing heavy
+  // on your PC, but the picture of your screen goes to Google
+  const cfg = config.load();
+  if (cfg.screenOnline === true && setup.openKeys(cfg.apiKeys || {}).gemini) {
+    const v = await cameraVision();
+    if (v?.provider === 'gemini') {
+      const messages = [
+        { role: 'system', content: String(persona || '') }, ...before,
+        { role: 'user', content: [{ type: 'text', text: String(prompt || '') }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] },
+      ];
+      try {
+        const text = await llm.chat('gemini', llmConfig(cfg), { model: v.model, messages }, () => {}, AbortSignal.timeout(45000));
+        return { ok: true, text, model: v.model, provider: 'gemini' };
+      } catch { /* her local model, then */ }
+    }
+  }
   const local = await localSay({ persona, prompt, images: [image], history: before, maxTokens: 160, timeout: 120000 });
   return local.ok || local.code === 'novision' ? local : { ok: false, code: 'noai' };
 }

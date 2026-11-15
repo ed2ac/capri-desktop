@@ -209,7 +209,7 @@ export class Hearing {
   }
 
   hear(samples, rate) {
-    if (this.light) return; // light mode (light.js): no listening to the room (her name still works)
+    if (this.light || this.looking) return; // light mode (light.js), or looking at your screen: no listening to the room (her name still works)
     let results;
     try {
       results = this.classifier.classify(samples, rate);

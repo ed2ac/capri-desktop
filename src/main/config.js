@@ -48,6 +48,7 @@ const DEFAULTS = {
   pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
   localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
   lightMode: { games: true, claude: false, heavy: false, battery: false, always: false }, // when she goes light (light.js)
+  screenOnline: false, // look at your screen through Gemini instead of her local model (the picture goes to Google)
   mcpOn: true, // Claude Code may talk to you through her (hooks/capri-mcp.js); off: it carries on without her
   lives: [], // streamers to watch for: [{ site: 'twitch'|'youtube', name }] (lives.js)
   notesDir: null, // a folder of yours (an Obsidian vault…) where she keeps her diary, your to-dos and what she knows, in Markdown
