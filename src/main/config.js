@@ -47,6 +47,7 @@ const DEFAULTS = {
   chatty: 'normal',
   pranks: 'light',   // her mischief (play.js): 'off', 'light' (zaps, shaking a window, the keyboard's lights) or 'bold' (your pointer too)  // how often she talks about what you do: 'low', 'normal' or 'high' (activity.js)
   localModel: '',    // the model on this PC for all she says on her own (empty: gemma3 if there, else the first)
+  mcpOn: true, // Claude Code may talk to you through her (hooks/capri-mcp.js); off: it carries on without her
   lives: [], // streamers to watch for: [{ site: 'twitch'|'youtube', name }] (lives.js)
   notesDir: null, // a folder of yours (an Obsidian vault…) where she keeps her diary, your to-dos and what she knows, in Markdown
   voiceLocal: false, // her offline voice: Whisper on this PC instead of Groq (src/whisper)

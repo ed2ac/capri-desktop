@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('host', {
   onSpotifyNow: on('spotify:now'),
   onNotices: on('notices'),
   livesSet: (r) => ipcRenderer.invoke('lives:set', r),
+  visionKey: (k) => ipcRenderer.invoke('vision:key', k),
   onLive: on('lives:on'),
   voiceLocal: (on) => ipcRenderer.invoke('voice:local', on),
   onVoiceProgress: on('voice:progress'),

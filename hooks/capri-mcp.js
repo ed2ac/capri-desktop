@@ -72,6 +72,7 @@ async function call(name, args = {}) {
   } catch {
     return { text: 'Capri is not running on the user\'s desktop right now; carry on without her.', error: true };
   }
+  if (reply.off) return { text: 'Capri is set not to relay Claude Code right now (her menu). Carry on without her, in the terminal.' };
   if (name === 'capri_ask') {
     return { text: reply.answer ? `The user answered: ${reply.answer}` : 'Nobody answered (the user may be away). Decide sensibly, or ask again later.' };
   }

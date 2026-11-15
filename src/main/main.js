@@ -624,6 +624,7 @@ function spotifyStart() {
 const mcpAsks = new Map(); // id -> resolve(answer)
 function onMcp({ tool, args = {}, cwd = '' } = {}) {
   if (!overlay) return { ok: false, error: 'not ready' };
+  if (config.load().mcpOn === false) return { ok: false, off: true, error: 'off' }; // her menu: Claude carries on on its own
   const project = String(cwd || '').split('/').filter(Boolean).pop() || '';
   const text = (s, n) => String(s || '').slice(0, n);
   if (tool === 'capri_say') {
@@ -962,7 +963,14 @@ async function cameraVision() {
     return null;
   };
   v = await tryProvider('groq', [/llama-4-scout/i, /llama-4/i, /vision|vl\b|llava|maverick/i]);
-  if (!v) v = await tryProvider('gemini', [/flash-lite/i, /flash/i]);
+  if (!v && keys.gemini) {
+    // Gemini's newest stable Flash (better eyes than Flash-Lite, and her camera looks rarely enough for its free tier)
+    const list = (await llm.models('gemini', llmConfig(cfg)).catch(() => [])) || [];
+    const ver = (m) => Number((/gemini-(\d+(?:\.\d+)?)/.exec(m) || [])[1] || 0);
+    const stable = list.filter((m) => /gemini-[\d.]+-flash/.test(m) && !/preview|exp|image|tts|live|thinking|audio|8b/i.test(m)).sort((a, b) => ver(b) - ver(a));
+    const best = stable.find((m) => !/lite/.test(m)) || stable[0] || list.find((m) => /flash/.test(m));
+    if (best) v = { provider: 'gemini', model: best };
+  }
   if (!v) {
     const local = await localModel(cfg);
     if (local && (await ollama.canSee(local))) v = { provider: 'local', model: local };
@@ -1084,6 +1092,7 @@ function rebuildTray() {
     }] : []),
     { label: t.workshop, click: () => openWorkshop() },
     { label: t.corner, click: () => openCorner() },
+    { label: (cfg.apiKeys || {}).gemini ? t.geminiOn : t.geminiKey, click: () => sendCommand('geminiKey') },
     { label: t.tabsExt, click: () => installExtension() },
     cfg.spotifyRefresh
       ? { label: t.spotifyOn, click: () => overlay?.webContents.send('spotify:disconnect-ask') }
@@ -1107,6 +1116,7 @@ function rebuildTray() {
           const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.notesDir, properties: ['openDirectory'] });
           if (!canceled && filePaths[0]) { updateConfig({ notesDir: filePaths[0] }); rebuildTray(); }
         } },
+        { label: t.mcpOn, type: 'checkbox', checked: cfg.mcpOn !== false, click: (i) => updateConfig({ mcpOn: i.checked }) },
         { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
         { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
       ],
@@ -2123,6 +2133,19 @@ function registerIpc() {
     updateConfig({ provider: before.provider, apiKeys: before.apiKeys, customUrl: before.customUrl });
     await refreshModels();
     return { ok: false, error };
+  });
+  // a Gemini key for her camera only (her chat stays where it is): saved encrypted, tried, kept if it works
+  ipcMain.handle('vision:key', async (_e, key) => {
+    const k = String(key || '').trim();
+    if (!/^AIza[\w-]{30,}$/.test(k)) return { ok: false, error: 'format' };
+    const before = config.load();
+    config.save({ apiKeys: { ...before.apiKeys, gemini: setup.sealKey(k) } });
+    const list = await llm.models('gemini', llmConfig(config.load())).catch(() => null);
+    if (!list?.length) { config.save({ apiKeys: before.apiKeys }); return { ok: false, error: 'rejected' }; }
+    visionCache = null;
+    const v = await cameraVision();
+    rebuildTray();
+    return { ok: true, model: v?.model };
   });
   ipcMain.on('setup:keyPage', (_e, provider) => setup.KEY_PAGES[provider] && shell.openExternal(setup.KEY_PAGES[provider]));
   ipcMain.handle('setup:launch', (_e, integration) => setup.launchThroughOllama(integration));

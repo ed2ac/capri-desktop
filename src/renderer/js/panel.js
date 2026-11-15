@@ -4,6 +4,16 @@ import { clamp, ease, reducedMotion, tidy } from './util.js';
 
 const NOISE = '▚▞▙▟░▒#%&/\\<>01XZ';
 
+// How long a line of hers stays: long enough to read it (its text decodes in first), no longer.
+// About 15 characters a second, plus a moment to look; at least 3 s, at most 16 s. Something that
+// matters (an alert, a reminder, her buttons) keeps at least the time it asked for.
+export function readingTime(msg) {
+  const chars = String(msg.line || '').length + Math.round(String(msg.quote || '').length * 0.6);
+  const read = Math.max(3000, Math.min(16000, 1600 + chars * 65));
+  const important = ['alert', 'remind', 'error'].includes(msg.kind) || msg.actions?.length;
+  return important ? Math.max(read, msg.hold) : read;
+}
+
 // Her faces, frames of her from the show (tools/build-cutins.py). A message can ask for one;
 // otherwise it goes with what kind of message it is.
 const FACE_DIR = '../../assets/capri/';
@@ -159,7 +169,7 @@ export class Panel {
     this.place();
     this.decode(msg.line || '', msg.kind);
 
-    if (msg.hold) this.hideTimer = setTimeout(() => this.hide(), msg.hold);
+    if (msg.hold) this.hideTimer = setTimeout(() => this.hide(), readingTime(msg));
     return true;
   }
 

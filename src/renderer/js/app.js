@@ -1151,6 +1151,21 @@ async function boot() {
   });
 
   host.onCommand(async (cmd) => {
+    // a Gemini key, for her camera only (guided)
+    if (cmd.name === 'geminiKey') {
+      const g = brain.t.gemini;
+      guide.scene(async () => {
+        capri.perform('curious', capri.towardCenter());
+        const r = await guide.askText({
+          face: 'look', line: g.ask, quote: g.how, secret: true, placeholder: g.placeholder, send: g.save,
+          actions: [{ id: 'page', label: g.page }], onAction: () => { host.openSite('https://aistudio.google.com/apikey'); return true; },
+        });
+        if (!r?.text) return;
+        const done = await host.visionKey(r.text).catch(() => ({ ok: false }));
+        panel.say({ kind: done.ok ? 'done' : 'info', face: done.ok ? 'laugh' : 'aside', line: done.ok ? fmt(g.ok, { model: done.model || 'Gemini' }) : done.error === 'format' ? g.badFormat : g.rejected, hold: 7000 });
+      });
+      return;
+    }
     // her offline voice: download the model (with progress in her ticker), or turn it off
     if (cmd.name === 'voiceLocal') {
       const v = brain.t.voice;

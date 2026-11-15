@@ -196,3 +196,12 @@ test('streamers going live, asked in words', () => {
   const r = ask('para de me avisar do Gaules');
   assert.deepEqual([r.op, r.name], ['remove', 'Gaules']);
 });
+
+test('her lines stay as long as it takes to read them', async () => {
+  const { readingTime } = await import(R('panel'));
+  assert.equal(readingTime({ kind: 'info', line: 'Oi!', hold: 9000 }), 3000); // short: short
+  const long = readingTime({ kind: 'info', line: 'x'.repeat(160), hold: 4000 });
+  assert.ok(long > 11000 && long < 13000, String(long)); // long: longer than it asked
+  assert.equal(readingTime({ kind: 'info', line: 'x'.repeat(2000), hold: 4000 }), 16000); // never too long
+  assert.equal(readingTime({ kind: 'alert', line: 'Oi!', hold: 9000 }), 9000); // what matters keeps its time
+});
