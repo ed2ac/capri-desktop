@@ -16,7 +16,7 @@ const repo = `${build.publish[0].owner}/${build.publish[0].repo}`;
 const dist = path.join(__dirname, '..', 'dist');
 const files = fs.readdirSync(dist).filter((f) => f === 'latest.yml' || (f.includes(version) && /\.(exe|blockmap)$/.test(f))).map((f) => path.join(dist, f));
 if (!files.some((f) => f.endsWith('latest.yml'))) throw new Error('no dist/latest.yml: run npm run dist first');
-const gh = (args) => execFileSync('gh', args, { stdio: 'inherit', shell: process.platform === 'win32' });
+const gh = (args) => execFileSync('gh', args, { stdio: 'inherit' }); // no shell: it would split "Capri 0.8.0" in two
 try {
   gh(['release', 'view', `v${version}`, '--repo', repo]);
   gh(['release', 'upload', `v${version}`, ...files, '--clobber', '--repo', repo]);
