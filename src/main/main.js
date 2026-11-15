@@ -442,6 +442,7 @@ async function githubTick() {
 // ---- Your PS5 (psn.js): what you're playing now, and your games' play time once a day ----
 const psn = require('./psn');
 let psnLast = { game: null, since: 0 };
+let psnHealth = null; // the last look at your PS5: { ok, at, error } (her /state shows it)
 let psnTimer = null;
 const psnKeep = (r) => config.save({ psnRefresh: setup.sealKey(r) });
 function psnStart() {
@@ -451,7 +452,15 @@ function psnStart() {
   clearInterval(psnTimer);
   const tick = async () => {
     const p = await psn.presence(psnKeep).catch((err) => ({ error: err.message }));
-    if (p.error) { if (/refresh|401|invalid_grant/i.test(p.error)) overlay?.webContents.send('psn:event', { type: 'expired' }); return; }
+    psnHealth = { ok: !p.error, at: new Date().toISOString(), error: p.error || null };
+    if (p.error) {
+      // the login refused (Sony signed her out, a password changed, it ran out): tell you once
+      if (/refresh|401|403|invalid_grant|unauthori[sz]ed|authenticat|token|npsso|expired/i.test(p.error) && !psnHealth.told) {
+        overlay?.webContents.send('psn:event', { type: 'expired' });
+        psnHealth.told = true;
+      }
+      return;
+    }
     const game = p.online ? p.game : null;
     if (game !== psnLast.game) {
       if (psnLast.game) overlay?.webContents.send('psn:event', { type: 'stop', game: psnLast.game, minutes: Math.round((Date.now() - psnLast.since) / 60000) });
@@ -2639,12 +2648,12 @@ function main() {
       port: PORT,
       onTabs: (ws) => tabs.attach(ws),
       onMcp: (body) => onMcp(body),
-      onState: () => overlay?.webContents.executeJavaScript(`(() => { const d = window.dev; if (!d) return null; const c = d.capri;
+      onState: () => Promise.resolve(overlay?.webContents.executeJavaScript(`(() => { const d = window.dev; if (!d) return null; const c = d.capri;
         return { version: '${app.getVersion()}', mode: c.mode, stance: c.stance, busy: c.busy, busyBy: c.busyBy, busyFor: c.busy ? Math.round((performance.now() - c.busySince) / 1000) : 0,
           dormant: c.dormant, lounge: Boolean(c.lounge), wander: c.wander, restOn: c.restOn, idleFor: Math.round((performance.now() - c.lastActivity) / 1000), sleepAfter: Math.round((c.sleepAfter?.() || 0) / 1000),
           energy: d.heart.energy, level: d.heart.energyLevel, state: d.heart.state, presence: d.presence.state, holding: d.life.holding(), guide: d.guide.running,
           panel: d.panel.current ? { kind: d.panel.current.kind, actions: (d.panel.current.actions || []).length, guide: Boolean(d.panel.current.guide) } : null,
-          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`),
+          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`)).then((s) => ({ ...(s || {}), psn: config.load().psnRefresh ? psnHealth || 'not looked yet' : 'not connected' })),
       onSpotify: async (query) => {
         const r = await spotify.callback(query);
         if (r.ok) {
