@@ -94,7 +94,7 @@ async function main() {
     const r1 = d.panel.rect(); const still = r0 && r1 && Math.abs(r0.left - r1.left) < 10 && Math.abs(r0.top - r1.top) < 10 && Math.abs(d.capri.pos.x - pos0.x) < 2 /* she floats a few px */;
     const b = [...document.querySelectorAll('.panel__action')].find((x) => x.offsetParent && /Agora não|Not now/.test(x.textContent)); b?.click(); await sleep(800);
     d.mic.asked = ${JSON.stringify(Boolean(original.micAsked))};
-    return { shown: Boolean(r0), still, closed: !d.guide.waiting && !d.guide.running, ...(r0 ? {} : { before, says }) };`, (v) => v.shown && v.still && v.closed);
+    return { shown: Boolean(r0), still, closed: !d.guide.waiting && !d.guide.running, ...(r0 ? {} : { before, says }), ...(still ? {} : { r0: r0 && [Math.round(r0.left), Math.round(r0.top), Math.round(r0.width)], r1: r1 && [Math.round(r1.left), Math.round(r1.top), Math.round(r1.width)], x0: Math.round(pos0.x), x1: Math.round(d.capri.pos.x), stance: d.capri.stance, mode: d.capri.mode, says }) };`, (v) => v.shown && v.still && v.closed);
   await check('her name heard doesn\'t ask anything', `
     d.capri.setMode('idle'); d.mic.asked = false; let asked = false; const real = d.guide.ask.bind(d.guide); d.guide.ask = (...a) => { asked = true; return Promise.resolve('no'); };
     const realStart = d.mic.start.bind(d.mic); d.mic.start = async () => 'started';
