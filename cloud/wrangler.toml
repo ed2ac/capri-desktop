@@ -1,0 +1,16 @@
+# Capri's cloud: a Cloudflare Worker (free plan). Set up with `npm run setup` (it fills the ids below).
+name = "capri-cloud"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# every 3 minutes: a look at your PS5 (through Discord); every 15, one news feed
+[triggers]
+crons = ["*/3 * * * *"]
+
+[[kv_namespaces]]
+binding = "STORE"
+id = "FILL_BY_SETUP"
+
+[vars]
+GUILD_ID = "FILL_BY_SETUP"
+USER_ID = "FILL_BY_SETUP"

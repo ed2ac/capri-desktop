@@ -930,6 +930,26 @@ async function boot() {
     return undefined;
   });
   host.onPsnGames?.((list) => { for (const g of list) memory.game(g.name, g.minutes); });
+  // her cloud (main cloud.js): your PS5 sessions into her memory; what you played while she was off, a recap
+  host.onCloudSessions?.(({ all, away }) => {
+    for (const g of all || []) memory.game(g.name, g.minutes);
+    const real = (away || []).filter((g) => g.minutes >= 10).slice(0, 3);
+    if (!real.length) return;
+    const c = brain.t.cloud;
+    const time = (m) => (m >= 90 ? `${Math.round(m / 6) / 10} h` : `${m} min`);
+    const list = real.map((g) => `${g.name} (${time(g.minutes)})`).join(', ');
+    const line = fmt(real.length > 1 ? c.recap : c.recapOne, { list });
+    whenFree(() => {
+      if (presence.note(line)) return;
+      capri.wake();
+      capri.perform('curious', capri.towardCenter());
+      panel.say({ kind: 'info', face: 'smug', line, hold: 9000 });
+    });
+  });
+  host.onCloudDisconnectAsk?.(() => guide.scene(async () => {
+    const c = brain.t.cloud;
+    if ((await guide.ask({ face: 'look', line: c.disconnectAsk, actions: [{ id: 'yes', label: c.disconnect, primary: true }, { id: 'no', label: c.keep }] })) === 'yes') host.cloudDisconnect();
+  }));
   host.onPsnDisconnectAsk?.(() => guide.scene(async () => {
     const p = brain.t.psn;
     if ((await guide.ask({ face: 'look', line: p.disconnectAsk, actions: [{ id: 'yes', label: p.disconnect, primary: true }, { id: 'no', label: p.keep }] })) === 'yes') host.psnDisconnect();
@@ -1323,6 +1343,30 @@ async function boot() {
         if (!r?.text) return;
         const done = await host.spotifyLogin(r.text).catch(() => ({ ok: false }));
         panel.say({ kind: 'info', face: done.ok ? 'look' : 'aside', line: done.ok ? s.browser : s.badFormat, hold: 7000 });
+      });
+      return;
+    }
+    // her cloud: its address, then its key, pasted in her panel (guided)
+    if (cmd.name === 'cloudSetup') {
+      const c = brain.t.cloud;
+      guide.scene(async () => {
+        capri.perform('curious', capri.towardCenter());
+        for (let tries = 0; tries < 3; tries++) {
+          const u = await guide.askText({
+            face: 'look', line: c.askUrl, quote: c.howText, placeholder: c.urlPlaceholder, send: c.next,
+          });
+          if (!u?.text) return;
+          const k = await guide.askText({ face: 'look', line: c.askKey, secret: true, placeholder: c.keyPlaceholder, send: c.connect });
+          if (!k?.text) return;
+          const done = await host.cloudConnect({ url: u.text.trim(), key: k.text.trim() }).catch(() => ({ ok: false, error: 'offline' }));
+          if (done.ok) {
+            capri.perform('hop', capri.towardCenter());
+            panel.say({ kind: 'done', face: 'laugh', line: c.connected, hold: 8000 });
+            return;
+          }
+          panel.say({ kind: 'info', face: 'aside', line: { url: c.badUrl, notCapri: c.notCapri, key: c.badKey }[done.error] || c.offline, hold: 5000 });
+          await new Promise((res) => setTimeout(res, 3000));
+        }
       });
       return;
     }

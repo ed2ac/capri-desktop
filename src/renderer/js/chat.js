@@ -11,6 +11,7 @@ import { parseReminder, parseWhen, clock } from './reminders.js';
 import { folderIn } from './hands.js';
 import { portraitStrokes } from './art.js';
 import { GAME_ASK as WORD_GAMES } from './games.js';
+import { NEWS_ASK, newsCat, pickNews, mentions } from './news.js';
 
 const REMEMBER = 20; // messages she has in mind when answering
 const KEEP = 60;     // messages she remembers across restarts (memory.json)
@@ -727,6 +728,9 @@ export class Chat {
   // { kind: 'media', action } | { kind: 'music', song } | { kind: 'close', name } | { kind: 'open', text }
   asked(text) {
     const count = text.trim().split(/\s+/).length;
+    // a headline she just told you about: "abre a segunda", "abre a do GTA"
+    const opened = this.newsOpen(text);
+    if (opened) return { kind: 'newsOpen', item: opened };
     const task = TASK_ASK.exec(text);
     if (task && this.hands) return { kind: 'task', text: task[1].trim() };
     if (this.hands && WORK_ASK.test(text) && folderIn(text)) return { kind: 'task', text: text.trim() };
@@ -741,6 +745,7 @@ export class Chat {
     const liveDel = LIVE_DEL.exec(text);
     if (liveDel) return { kind: 'live', op: 'remove', name: liveDel[1] || liveDel[2] };
     if (this.notices && NOTICES_ASK.test(text)) return { kind: 'notices' };
+    if (this.host.cloudNews && NEWS_ASK.test(text)) return { kind: 'news', cat: newsCat(text) };
     const pl = PLAYLIST_ASK.exec(text);
     if (pl) return { kind: 'playlist', about: (pl[1] || pl[2] || '').replace(/[.!?]+$/, '').trim() };
     if (this.presence && NIGHT_ASK.test(text.trim())) return { kind: 'night' };
@@ -981,6 +986,11 @@ export class Chat {
       if (!r?.ok) return { line: asked.op === 'remove' ? fmt(l.notWatching, { name: asked.name }) : l.failed, face: 'aside' };
       if (asked.op === 'remove') return { line: fmt(l.removed, { name: r.name }), face: 'look' };
       return { line: fmt(r.live ? l.addedLive : l.added, { name: r.name, site: r.site === 'youtube' ? 'YouTube' : 'Twitch' }), face: 'smug' };
+    }
+    if (asked.kind === 'news') return this.news(asked.cat);
+    if (asked.kind === 'newsOpen') {
+      this.host.openSite(asked.item.link);
+      return { line: `“${asked.item.title}”…`, face: 'look' };
     }
     if (asked.kind === 'notices') {
       const n = this.brain.t.notices;
@@ -1404,6 +1414,34 @@ export class Chat {
   }
 
   // "close am music pls": an app that's open, named in a message asking to close something.
+  // ---- the news (news.js, from her cloud) ----
+
+  async news(cat) {
+    const c = this.brain.t.cloud;
+    const on = await this.host.cloudOn?.().catch(() => false);
+    if (!on) return { line: c.newsOff, face: 'aside' };
+    const items = await this.host.cloudNews().catch(() => []);
+    const likes = this.visitor ? [] : (this.memory?.ranked() || []).filter((i) => ['games', 'likes', 'music', 'projects', 'freeTime'].includes(i.kind)).slice(0, 30).map((i) => i.label);
+    const list = pickNews(items, { cat, likes, max: 5 });
+    if (!list.length) return { line: c.newsNone, face: 'look' };
+    this.lastNews = { list, at: Date.now() };
+    const lines = list.map((i, n) => `${n + 1}. ${i.title} (${i.src})`);
+    return { line: `${cat ? c.newsCat[cat] : c.news}\n${lines.join('\n')}\n${c.newsMore}`, face: 'smug' };
+  }
+
+  // which of the headlines she just told: by its number ("a 2", "a segunda") or a word of its title
+  newsOpen(text) {
+    const last = this.lastNews;
+    if (!last || Date.now() - last.at > 10 * 60000) return null;
+    const m = /^(?:capri,?\s+)?(?:abr[ea]\w*|mostra|me\s+mostra|open|show)\s+(?:me\s+)?(?:a\s+|o\s+|the\s+)?(?:not[íi]cia\s+|headline\s+|link\s+)?(?:d[oa]s?\s+|about\s+|on\s+)?(.+?)[.!?]*$/i.exec(text.trim());
+    if (!m) return null;
+    const what = m[1].trim().toLowerCase();
+    const ORD = { essa: 1, esta: 1, ela: 1, this: 1, it: 1, primeira: 1, first: 1, segunda: 2, second: 2, terceira: 3, third: 3, quarta: 4, fourth: 4, quinta: 5, fifth: 5, 'última': last.list.length, ultima: last.list.length, last: last.list.length };
+    const n = Number(/^(?:n[º°o]?\s*|number\s+|#)?(\d)\b/.exec(what)?.[1]) || ORD[what.split(/\s+/)[0]];
+    if (n && last.list[n - 1]) return last.list[n - 1];
+    return last.list.find((i) => mentions(i.title, what)) || null;
+  }
+
   askedToClose(text) {
     if (!CLOSE_ASK.test(text)) return null;
     const said = simple(text);

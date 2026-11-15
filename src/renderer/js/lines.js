@@ -1153,6 +1153,19 @@ export const LINES = {
       trophy: ['A {kind} trophy in {game}! ({progress}% done)', 'Ooh, {kind} in {game}. Nice one, choom.'], platinum: ['PLATINUM in {game}!! You absolute legend!', 'Platinum! {game} is done-done. I’m so proud of you!'], kinds: { platinum: 'platinum', gold: 'gold', silver: 'silver', bronze: 'bronze' },
       disconnectAsk: 'Disconnect your PS5 from me?', disconnect: 'Disconnect', keep: 'Keep it',
     },
+    // her cloud (main cloud.js, cloud/): your PS5 through Discord, the news
+    cloud: {
+      askUrl: 'Let’s connect my cloud. Paste its address here (the one `npm run setup` showed you):', urlPlaceholder: 'https://capri-cloud.….workers.dev', next: 'Next', how: 'How',
+      howText: 'In the cloud folder of my repo: npm install, then npm run setup. It walks you through it (Cloudflare login, your Discord bot) and shows the address and my key at the end.',
+      askKey: 'Now my key (the long one from the end of the setup). It stays encrypted on this PC:', keyPlaceholder: 'Key', connect: 'Connect',
+      connected: 'My cloud is on! Now I know what you play on the PS5 even with the notebook off, and I keep up with the news.',
+      badUrl: 'That isn’t a Worker address (https://…workers.dev). Again?', notCapri: 'Something answers there, but it isn’t my cloud. Was it the right address?', badKey: 'My cloud didn’t accept that key. Copy it again?', offline: 'I couldn’t reach my cloud. Is it published (npm run deploy)?',
+      disconnectAsk: 'Disconnect my cloud? (It keeps running on your Cloudflare; I just stop asking it.)', disconnect: 'Disconnect', keep: 'Keep it',
+      recap: 'While the notebook was off you played {list}. Missed me?', recapOne: 'While the notebook was off you played {list}. So, how was it?',
+      news: 'Here’s what’s going on:', newsCat: { games: 'In games:', tech: 'In tech:', brasil: 'In Brazil:', mundo: 'In the world:' }, newsNone: 'Nothing new from my cloud right now.',
+      newsOff: 'For the news I need my cloud connected (my menu › Connect her cloud).', newsMore: 'Want me to open one? Tell me which.',
+      talk: 'About “{label}”, which you like: “{title}” ({src}). Did you see it?',
+    },
     // Claude Code talking through her (MCP)
     mcp: { asks: '{project} is asking you:', badge: 'CLAUDE', placeholder: 'Your answer…', send: 'Send', away: '{project} said: “{text}”' },
     // games in her chat (games.js)
@@ -2443,6 +2456,19 @@ export const LINES = {
       trophy: ['Troféu de {kind} no {game}! ({progress}% feito)', 'Opa, {kind} no {game}. Mandou bem, choom.'], platinum: ['PLATINA no {game}!! Você é uma lenda!', 'Platinou! {game} tá zerado de verdade. Tô muito orgulhosa!'], kinds: { platinum: 'platina', gold: 'ouro', silver: 'prata', bronze: 'bronze' },
       disconnectAsk: 'Desligar seu PS5 de mim?', disconnect: 'Desligar', keep: 'Manter',
     },
+    // a nuvem dela (main cloud.js, cloud/): seu PS5 pelo Discord, as notícias
+    cloud: {
+      askUrl: 'Bora ligar minha nuvem. Cola aqui o endereço dela (o que o `npm run setup` te mostrou):', urlPlaceholder: 'https://capri-cloud.….workers.dev', next: 'Próximo', how: 'Como',
+      howText: 'Na pasta cloud do meu repositório: npm install, depois npm run setup. Ele te guia (login no Cloudflare, seu bot do Discord) e no fim mostra o endereço e a minha chave.',
+      askKey: 'Agora a minha chave (a comprida, do fim do setup). Fica criptografada neste PC:', keyPlaceholder: 'Chave', connect: 'Ligar',
+      connected: 'Minha nuvem tá ligada! Agora eu sei o que você joga no PS5 mesmo com o notebook desligado, e fico por dentro das notícias.',
+      badUrl: 'Isso não é endereço de Worker (https://…workers.dev). De novo?', notCapri: 'Alguma coisa responde lá, mas não é a minha nuvem. Era o endereço certo?', badKey: 'Minha nuvem não aceitou essa chave. Copia de novo?', offline: 'Não consegui falar com a minha nuvem. Ela tá publicada (npm run deploy)?',
+      disconnectAsk: 'Desligar minha nuvem? (Ela continua no seu Cloudflare; eu só paro de perguntar pra ela.)', disconnect: 'Desligar', keep: 'Manter',
+      recap: 'Enquanto o notebook tava desligado você jogou {list}. Sentiu minha falta?', recapOne: 'Enquanto o notebook tava desligado você jogou {list}. E aí, como foi?',
+      news: 'Olha o que tá rolando:', newsCat: { games: 'Nos games:', tech: 'Em tecnologia:', brasil: 'No Brasil:', mundo: 'No mundo:' }, newsNone: 'Nada de novo na minha nuvem agora.',
+      newsOff: 'Pras notícias eu preciso da minha nuvem ligada (meu menu › Ligar a nuvem da Capri).', newsMore: 'Quer que eu abra alguma? É só dizer qual.',
+      talk: 'Sobre “{label}”, que você curte: “{title}” ({src}). Viu essa?',
+    },
     // o Claude Code falando por ela (MCP)
     mcp: { asks: 'O {project} quer saber:', badge: 'CLAUDE', placeholder: 'Sua resposta…', send: 'Enviar', away: 'O {project} disse: “{text}”' },
     // jogos no chat dela (games.js)
@@ -3145,7 +3171,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini', 'light', 'memoryCheck', 'update', 'energyLevel', 'energy']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'cloud', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini', 'light', 'memoryCheck', 'update', 'energyLevel', 'energy']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }

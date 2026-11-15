@@ -462,7 +462,7 @@ function psnStart() {
       return;
     }
     const game = p.online ? p.game : null;
-    if (game !== psnLast.game) {
+    if (game !== psnLast.game && !capriCloud.connected()) { // her cloud, when connected, says it instead
       if (psnLast.game) overlay?.webContents.send('psn:event', { type: 'stop', game: psnLast.game, minutes: Math.round((Date.now() - psnLast.since) / 60000) });
       if (game) overlay?.webContents.send('psn:event', { type: 'start', game, platform: p.platform });
       psnLast = { game, since: Date.now(), trophiesAt: psnLast.trophiesAt };
@@ -494,6 +494,67 @@ function psnStart() {
   };
   setTimeout(() => tick().catch(() => {}), 20000);
   psnTimer = setInterval(() => tick().catch(() => {}), 2 * 60000);
+}
+
+// ---- Her cloud (cloud.js, cloud/ in this repo): your PS5 through Discord and the news, kept while
+// this notebook is off. Every 3 minutes what you're playing now; at start and every 30 minutes your
+// sessions (a recap of what you played while she was off); every 30 minutes the news.
+const capriCloud = require('./cloud');
+const bootAt = Date.now();
+let cloudLast = null;     // { game, since } as of the last look; null = not looked yet
+let cloudHealth = null;   // her /state shows it
+let cloudNews = [];       // the last 48 h of headlines
+let cloudTimers = [];
+function cloudStop() {
+  cloudTimers.forEach(clearInterval);
+  cloudTimers = [];
+  cloudLast = null;
+}
+function cloudStart() {
+  cloudStop();
+  const cfg = config.load();
+  if (!cfg.cloudUrl || !cfg.cloudKey) return capriCloud.use(null, null);
+  capriCloud.use(cfg.cloudUrl, setup.openKey(cfg.cloudKey));
+  const send = (ch, data) => overlay?.webContents.send(ch, data);
+  const live = async () => {
+    const r = await capriCloud.now().catch((err) => ({ fail: err.message }));
+    cloudHealth = { ok: !r.fail, at: new Date().toISOString(), error: r.fail || null, ps: r.error || null };
+    if (r.fail) return;
+    const game = r.current?.name || null;
+    const since = r.current?.since || Date.now();
+    if (cloudLast === null) {
+      // the first look: a game started just now is news; one going for a while, she just knows
+      cloudLast = { game, since };
+      if (game && Date.now() - since < 8 * 60000) send('psn:event', { type: 'start', game, platform: r.current.platform });
+      return;
+    }
+    if (game === cloudLast.game) return;
+    if (cloudLast.game) send('psn:event', { type: 'stop', game: cloudLast.game, minutes: Math.round((Date.now() - cloudLast.since) / 60000) });
+    if (game) send('psn:event', { type: 'start', game, platform: r.current.platform });
+    cloudLast = { game, since };
+  };
+  const played = async (first) => {
+    const since = config.load().cloudSince || Date.now() - 7 * 86400000;
+    const r = await capriCloud.sessions(since).catch(() => null);
+    if (!r?.sessions?.length) return;
+    const last = Math.max(...r.sessions.map((x) => x.end));
+    config.save({ cloudSince: last });
+    // into her memory, all of them; the recap, those that ended while she was off
+    send('cloud:sessions', { all: capriCloud.recap(r.sessions, since), away: first ? capriCloud.recap(r.sessions.filter((x) => x.end < bootAt), since) : [] });
+  };
+  const headlines = async () => {
+    const since = cloudNews.length ? Math.max(...cloudNews.map((i) => i.at)) : 0;
+    const r = await capriCloud.news(since).catch(() => null);
+    if (!r?.items) return;
+    const seen = new Set(r.items.map((i) => i.link));
+    cloudNews = [...r.items, ...cloudNews.filter((i) => !seen.has(i.link))].filter((i) => Date.now() - i.at < 48 * 3600000).sort((a, b) => b.at - a.at).slice(0, 150);
+  };
+  setTimeout(() => live().catch(() => {}), 25000);
+  setTimeout(() => played(true).catch(() => {}), 40000);
+  setTimeout(() => headlines().catch(() => {}), 50000);
+  cloudTimers.push(setInterval(() => live().catch(() => {}), 3 * 60000));
+  cloudTimers.push(setInterval(() => played(false).catch(() => {}), 30 * 60000));
+  cloudTimers.push(setInterval(() => headlines().catch(() => {}), 30 * 60000));
 }
 
 // ---- Her updates (electron-updater, from GitHub releases): looked for at start and every 6 hours;
@@ -543,7 +604,7 @@ async function manualUpdate(t) {
 // Her settings, her memory and diary, her drawings, her workshop's history and queue, and what she
 // keeps in her window (her heart, your bond). Not the keys and logins (encrypted with this Windows
 // account, they wouldn't open elsewhere) nor your face: those you connect again.
-const SECRET_KEYS = ['apiKeys', 'psnRefresh', 'spotifyRefresh', 'faceData'];
+const SECRET_KEYS = ['apiKeys', 'psnRefresh', 'spotifyRefresh', 'faceData', 'cloudKey'];
 async function exportBackup(parent) {
   const stamp = new Date().toISOString().slice(0, 10);
   const dir = path.join(parent, `Capri-backup-${stamp}`);
@@ -1233,9 +1294,11 @@ function rebuildTray() {
     cfg.spotifyRefresh
       ? { label: t.spotifyOn, click: () => overlay?.webContents.send('spotify:disconnect-ask') }
       : { label: t.spotifyConnect, click: () => sendCommand('spotifySetup') },
-    cfg.psnRefresh
-      ? { label: t.psnOn, click: () => { overlay?.webContents.send('psn:disconnect-ask'); } }
-      : { label: t.psnConnect, click: () => sendCommand('psnSetup') },
+    // your PS5: through her cloud (Discord); the old PSN link only shown to be disconnected
+    ...(cfg.psnRefresh ? [{ label: t.psnOn, click: () => { overlay?.webContents.send('psn:disconnect-ask'); } }] : []),
+    cfg.cloudUrl
+      ? { label: t.cloudOn, click: () => overlay?.webContents.send('cloud:disconnect-ask') }
+      : { label: t.cloudConnect, click: () => sendCommand('cloudSetup') },
     {
       label: t.programs,
       submenu: [
@@ -2154,6 +2217,24 @@ function registerIpc() {
     rebuildTray();
     return { ok: true };
   });
+  // her cloud: the address and key you pasted in her panel (the key kept encrypted)
+  ipcMain.handle('cloud:connect', async (_e, { url, key } = {}) => {
+    const r = await capriCloud.check(url, key);
+    if (!r.ok) return r;
+    config.save({ cloudUrl: r.url, cloudKey: setup.sealKey(String(key).trim()), cloudSince: null });
+    cloudStart();
+    rebuildTray();
+    return { ok: true };
+  });
+  ipcMain.on('cloud:disconnect', () => {
+    cloudStop();
+    capriCloud.use(null, null);
+    cloudNews = [];
+    config.save({ cloudUrl: null, cloudKey: null, cloudSince: null });
+    rebuildTray();
+  });
+  ipcMain.handle('cloud:news', () => cloudNews);
+  ipcMain.handle('cloud:on', () => capriCloud.connected());
   ipcMain.on('psn:disconnect', () => {
     clearInterval(psnTimer);
     config.save({ psnRefresh: null, psnAccount: null });
@@ -2626,6 +2707,7 @@ function main() {
     ctxWatch(); // reminders tied to an app, from before
     updatesStart(); // her new versions, asking first
     psnStart(); // your PS5, if connected
+    cloudStart(); // her cloud (PS5 through Discord, the news), if connected
     spotifyStart(); // your Spotify, if connected
     noticesSync(); // your notifications, if she may read them
     setTimeout(() => livesTick().catch(() => {}), 90000);
@@ -2653,7 +2735,7 @@ function main() {
           dormant: c.dormant, lounge: Boolean(c.lounge), wander: c.wander, restOn: c.restOn, idleFor: Math.round((performance.now() - c.lastActivity) / 1000), sleepAfter: Math.round((c.sleepAfter?.() || 0) / 1000),
           energy: d.heart.energy, level: d.heart.energyLevel, state: d.heart.state, presence: d.presence.state, holding: d.life.holding(), guide: d.guide.running,
           panel: d.panel.current ? { kind: d.panel.current.kind, actions: (d.panel.current.actions || []).length, guide: Boolean(d.panel.current.guide) } : null,
-          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`)).then((s) => ({ ...(s || {}), psn: config.load().psnRefresh ? psnHealth || 'not looked yet' : 'not connected' })),
+          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`)).then((s) => ({ ...(s || {}), psn: config.load().psnRefresh ? psnHealth || 'not looked yet' : 'not connected', cloud: capriCloud.connected() ? { ...(cloudHealth || { looked: false }), playing: cloudLast?.game || null, news: cloudNews.length } : 'not connected' })),
       onSpotify: async (query) => {
         const r = await spotify.callback(query);
         if (r.ok) {

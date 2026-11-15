@@ -8,7 +8,8 @@
 // when you spoke after her question. Her menu › Camera and sounds › Talk with me turns it off; she
 // only does it once you've let her use the microphone.
 
-import { inLang, pick, rand } from './util.js';
+import { fmt, inLang, pick, rand } from './util.js';
+import { newsTopic } from './news.js';
 
 const WAIT_MS = 7000;      // how long she waits for you to start answering
 const SILENCE_MS = 1300;   // you stopped talking
@@ -176,6 +177,21 @@ export class Converse {
     const idle = await this.host.pcIdle().catch(() => 0);
     if (idle < 8 || c.windows?.game) return;
     this.lastStarter = now;
+    // now and then, a headline from her cloud about something of yours (news.js)
+    if (Math.random() < 0.35 && this.memory && this.host.cloudNews) {
+      const items = await this.host.cloudNews().catch(() => []);
+      const likes = this.memory.ranked().filter((i) => ['games', 'likes', 'music', 'projects', 'freeTime'].includes(i.kind)).slice(0, 30).map((i) => i.label);
+      this.newsTold ||= new Set();
+      const found = newsTopic(items, likes, this.newsTold);
+      if (found && !this.chat.open && !c.busy) {
+        this.newsTold.add(found.item.link);
+        this.chat.lastNews = { list: [found.item], at: Date.now() };
+        c.wake();
+        c.perform('look', c.towardCenter());
+        this.panel.say({ kind: 'idle', face: 'smug', line: fmt(this.brain.t.cloud.talk, { label: found.label, title: found.item.title, src: found.item.src }), hold: 10000 });
+        return;
+      }
+    }
     const hour = new Date().getHours();
     const prompt = [
       'Start a little conversation with the user, out of nowhere, like a friend sitting next to them would: ONE short question.',

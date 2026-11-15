@@ -1,0 +1,14 @@
+{
+  "name": "capri-cloud",
+  "private": true,
+  "type": "module",
+  "description": "Capri's cloud: your PS5 (through Discord) and the news, for when your notebook is off",
+  "scripts": {
+    "setup": "node setup.cjs",
+    "deploy": "wrangler deploy",
+    "logs": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "4.156.0"
+  }
+}

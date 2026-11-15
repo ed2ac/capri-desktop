@@ -58,6 +58,9 @@ const DEFAULTS = {
   spotifyRefresh: null, // its refresh token, encrypted
   psnRefresh: null, // your PS5 (psn.js): PSN's refresh token, encrypted (enc:…); null = not connected
   psnAccount: null,
+  cloudUrl: null, // her cloud (cloud/, a Cloudflare Worker of yours): its address; null = not connected
+  cloudKey: null, // its key, encrypted
+  cloudSince: null, // the end of the last PS5 session she brought home
   psnMinutes: {}, // minutes per game at the last daily look, to know what's new
   psnSyncDay: null,
   githubWatch: true, // your GitHub notifications (CI failed, reviews, mentions) through gh in WSL (github.js)
