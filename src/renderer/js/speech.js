@@ -212,7 +212,7 @@ export class Speech {
   }
 
   async tick() {
-    if (!this.enabled || this.paused || this.busy || !this.queue.length || Date.now() < this.unavailable) return;
+    if (!this.enabled || this.paused || this.light || this.busy || !this.queue.length || Date.now() < this.unavailable) return;
     if (this.chat.open) return; // her chat may want the model
     const path = this.queue.shift();
     this.busy = true;

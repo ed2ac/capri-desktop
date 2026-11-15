@@ -140,7 +140,15 @@ export class Daily {
     if (todos.length) parts.push(`Their to-do list: ${todos.map((x) => x.text).join('; ')}. Bring up one.`);
     const yesterday = (this.chat.diary || []).at(-1);
     if (yesterday) parts.push(`From your diary about their last day: "${yesterday.text}". You may bring up one thing from it.`);
-    parts.push('Two or three short sentences.');
+    // what Claude did overnight (her task queue), what they played yesterday (her memory), the sky ahead
+    const ws = await this.host.workState?.().catch(() => null);
+    const overnight = (ws?.history || []).filter((h) => Date.now() - h.at < 14 * 3600000 && h.ok);
+    if (overnight.length) parts.push(`While they slept, Claude finished: ${overnight.slice(0, 3).map((h) => `"${h.prompt.slice(0, 80)}"`).join('; ')}. Tell them it's ready to look at.`);
+    const played = (this.memory?.ranked('games') || []).filter((g) => Date.now() - g.last < 20 * 3600000).slice(0, 2).map((g) => g.label);
+    if (played.length) parts.push(`Yesterday they played ${played.join(' and ')}. You may ask how it went.`);
+    if (w && !w.error && w.rainIn) parts.push(`Rain is coming in about ${w.rainIn} h.`);
+    if (w && !w.error && w.aqi >= 150) parts.push(`The air outside is bad today (AQI ${w.aqi}).`);
+    parts.push('Three or four short sentences: the most important first. Not a list.');
     this.capri.wake();
     this.capri.perform('hop', this.capri.towardCenter());
     await this.say(parts.join('\n'), 'daily.morning', { face: 'grin' });
@@ -307,6 +315,8 @@ export class Daily {
       return this.panel.say({ kind: 'idle', face: 'laugh', line: s.stars, hold: 6000 });
     }
     const kind = w.temp <= 12 ? 'cold' : w.temp >= 32 ? 'hot' : (w.code >= 51 && w.code <= 82) || w.code >= 95 ? 'rain' : null;
+    // the weather on her mood too: a sunny mild day lifts her, rain and cold slow her down
+    this.heart?.nudge(kind || (w.code <= 1 && w.temp >= 18 && w.temp <= 30 ? 'sunny' : ''));
     if (!kind || Math.random() < 0.5) return;
     this.capri.perform(kind === 'cold' ? 'shake' : kind === 'hot' ? 'overheat' : 'huff', this.capri.towardCenter());
     this.panel.say({ kind: 'info', face: kind === 'rain' ? 'aside' : 'wide', line: fmt(this.brain.line(`daily.weather_${kind}`), { temp: w.temp, city: w.city }), hold: 5000 });
@@ -343,6 +353,7 @@ export class Daily {
     const h = this.heart;
     if (!this.free() || this.obs || (h && (h.energy < 40 || h.mood < 40)) || Date.now() - this.danceAt < 12 * 60000) return;
     this.danceAt = Date.now();
+    this.heart?.nudge('dance');
     const beat = bpm ? (60000 / bpm) * (bpm > 115 ? 2 : 1) : 900;
     const moves = bpm ? ['hop', 'hop', 'spin', 'hop', 'curious', 'hop', 'spin', 'split', 'hop', 'hop', 'spin', 'victory'] : ['hop', 'spin', 'hop', 'curious', 'hop', 'spin'];
     moves.forEach((m, i) => setTimeout(() => this.free() && this.capri.perform(m, i % 2 ? 1 : -1), i * beat));
@@ -554,7 +565,10 @@ export class Daily {
   // ---- what's playing, and your screenshots (her local model only) ----
 
   onMedia(m) {
-    if (m?.playing) this.dance();
+    if (m?.playing) {
+      this.heart?.nudge('music'); // music on lifts her
+      this.dance();
+    }
     if (!m || !m.playing || !this.activity.auto) return;
     const key = `${m.artist} - ${m.title}`;
     if (key === this.song) return;

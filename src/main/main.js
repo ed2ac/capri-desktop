@@ -456,7 +456,19 @@ function psnStart() {
     if (game !== psnLast.game) {
       if (psnLast.game) overlay?.webContents.send('psn:event', { type: 'stop', game: psnLast.game, minutes: Math.round((Date.now() - psnLast.since) / 60000) });
       if (game) overlay?.webContents.send('psn:event', { type: 'start', game, platform: p.platform });
-      psnLast = { game, since: Date.now() };
+      psnLast = { game, since: Date.now(), trophiesAt: psnLast.trophiesAt };
+    }
+    // your trophies: every 10 minutes while you play, every hour otherwise
+    const every = game ? 10 * 60000 : 60 * 60000;
+    if (Date.now() - (psnLast.trophiesAt || 0) > every) {
+      psnLast.trophiesAt = Date.now();
+      const now = await psn.trophies(psnKeep).catch(() => null);
+      if (now) {
+        const before = config.load().psnTrophies;
+        config.save({ psnTrophies: now });
+        const news = before ? psn.newTrophies(before, now) : [];
+        if (news.length) overlay?.webContents.send('psn:event', { type: 'trophies', list: news.slice(0, 6) });
+      }
     }
     // once a day: each game's play time, what's new since the last look into her memory
     const day = new Date().toDateString();
@@ -473,6 +485,65 @@ function psnStart() {
   };
   setTimeout(() => tick().catch(() => {}), 20000);
   psnTimer = setInterval(() => tick().catch(() => {}), 2 * 60000);
+}
+
+// ---- Her updates (electron-updater, from GitHub releases): looked for at start and every 6 hours;
+// a new one found, she asks you first, then downloads, installs and comes back ----
+let updater = null;
+function updatesStart() {
+  if (!app.isPackaged) return;
+  try { updater = require('electron-updater').autoUpdater; } catch { return; }
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = false;
+  updater.on('update-available', (info) => overlay?.webContents.send('update:available', { version: info.version }));
+  updater.on('download-progress', (p) => overlay?.webContents.send('update:progress', { percent: Math.round(p.percent) }));
+  updater.on('update-downloaded', () => setTimeout(() => updater.quitAndInstall(true, true), 1500));
+  updater.on('error', (err) => overlay?.webContents.send('update:error', { error: String(err?.message || err).slice(0, 200) }));
+  const look = () => updater.checkForUpdates().catch(() => {});
+  setTimeout(look, 60000);
+  setInterval(look, 6 * 3600000);
+}
+
+// ---- Backup: everything of hers in a folder of yours, and back (a new PC, a reinstall) ----
+// Her settings, her memory and diary, her drawings, her workshop's history and queue, and what she
+// keeps in her window (her heart, your bond). Not the keys and logins (encrypted with this Windows
+// account, they wouldn't open elsewhere) nor your face: those you connect again.
+const SECRET_KEYS = ['apiKeys', 'psnRefresh', 'spotifyRefresh', 'faceData'];
+async function exportBackup(parent) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const dir = path.join(parent, `Capri-backup-${stamp}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const cfg = { ...config.load() };
+  for (const k of SECRET_KEYS) delete cfg[k];
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 1));
+  fs.writeFileSync(path.join(dir, 'memory.json'), JSON.stringify(readMemory(), null, 1));
+  const storage = await overlay?.webContents.executeJavaScript("JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('capri')).map((k) => [k, localStorage.getItem(k)])))").catch(() => '{}');
+  fs.writeFileSync(path.join(dir, 'her.json'), storage || '{}');
+  for (const [from, name] of [[path.join(tasks.SHOP, 'desenhos'), 'desenhos'], [path.join(tasks.SHOP, '.runs'), 'oficina']]) {
+    if (!fs.existsSync(from)) continue;
+    fs.mkdirSync(path.join(dir, name), { recursive: true });
+    for (const f of fs.readdirSync(from)) if (/\.(png|json)$/i.test(f) && /^(history|queue)\.json$|\.png$/i.test(f)) fs.copyFileSync(path.join(from, f), path.join(dir, name, f));
+  }
+  return dir;
+}
+async function importBackup(dir) {
+  const read = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; } };
+  const cfg = read('config.json');
+  if (!cfg) throw new Error('not a backup');
+  for (const k of SECRET_KEYS) delete cfg[k];
+  config.save(cfg); // the keys and logins of this PC stay as they are
+  const mem = read('memory.json');
+  if (mem) saveMemory(mem);
+  const her = read('her.json');
+  if (her) await overlay?.webContents.executeJavaScript(`(() => { const d = ${JSON.stringify(her)}; for (const [k, v] of Object.entries(d)) if (k.startsWith('capri')) localStorage.setItem(k, v); })()`).catch(() => {});
+  for (const [name, to] of [['desenhos', path.join(tasks.SHOP, 'desenhos')], ['oficina', path.join(tasks.SHOP, '.runs')]]) {
+    const from = path.join(dir, name);
+    if (!fs.existsSync(from)) continue;
+    fs.mkdirSync(to, { recursive: true });
+    for (const f of fs.readdirSync(from)) fs.copyFileSync(path.join(from, f), path.join(to, f));
+  }
+  app.relaunch();
+  app.exit(0);
 }
 
 // ---- Streamers going live (lives.js): every 5 minutes, the ones you asked her to watch for ----
@@ -1074,7 +1145,7 @@ function rebuildTray() {
   };
   const cancelReminder = (id) => updateConfig({ reminders: (config.load().reminders || []).filter((r) => r.id !== id) });
 
-  const menu = Menu.buildFromTemplate(regroupTray(t, [
+  const template = regroupTray(t, [
     { label: t.online(PORT), enabled: false },
     ...(heartLabel ? [{ label: heartLabel, enabled: false }] : []),
     { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
@@ -1094,6 +1165,20 @@ function rebuildTray() {
     { label: t.corner, click: () => openCorner() },
     { label: (cfg.apiKeys || {}).gemini ? t.geminiOn : t.geminiKey, click: () => sendCommand('geminiKey') },
     { label: t.tabsExt, click: () => installExtension() },
+    { label: t.backup, submenu: [
+      { label: t.backupExport, click: async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.backupExport, properties: ['openDirectory', 'createDirectory'] });
+        if (canceled || !filePaths[0]) return;
+        const dir = await exportBackup(filePaths[0]).catch((err) => { dialog.showErrorBox('Capri', err.message); return null; });
+        if (dir) shell.openPath(dir);
+      } },
+      { label: t.backupImport, click: async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.backupImport, properties: ['openDirectory'] });
+        if (canceled || !filePaths[0]) return;
+        const ok = await dialog.showMessageBox({ type: 'question', buttons: [t.backupYes, t.backupNo], defaultId: 0, cancelId: 1, message: t.backupSure });
+        if (ok.response === 0) await importBackup(filePaths[0]).catch((err) => dialog.showErrorBox('Capri', err.message));
+      } },
+    ] },
     cfg.spotifyRefresh
       ? { label: t.spotifyOn, click: () => overlay?.webContents.send('spotify:disconnect-ask') }
       : { label: t.spotifyConnect, click: () => sendCommand('spotifySetup') },
@@ -1116,6 +1201,10 @@ function rebuildTray() {
           const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.notesDir, properties: ['openDirectory'] });
           if (!canceled && filePaths[0]) { updateConfig({ notesDir: filePaths[0] }); rebuildTray(); }
         } },
+        { label: t.lightMode, submenu: ['games', 'claude', 'heavy', 'battery', 'always'].map((k) => ({
+          label: t.lightModes[k], type: 'checkbox', checked: Boolean({ games: true, ...(cfg.lightMode || {}) }[k]),
+          click: (i) => updateConfig({ lightMode: { games: true, ...(config.load().lightMode || {}), [k]: i.checked } }),
+        })) },
         { label: t.mcpOn, type: 'checkbox', checked: cfg.mcpOn !== false, click: (i) => updateConfig({ mcpOn: i.checked }) },
         { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
         { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
@@ -1387,9 +1476,55 @@ function rebuildTray() {
     ] : []),
     { type: 'separator' },
     { label: t.quit, click: () => app.quit() },
-  ]));
+  ]);
+  lastTemplate = template;
+  settingsTitle = t.settings;
+  settingsSend();
+  const menu = Menu.buildFromTemplate([{ label: t.settings, click: () => openSettings() }, { type: 'separator' }, ...template]);
   tray.setContextMenu(menu);
   trayMenu = menu;
+}
+
+// ---- Her settings, in a window of her own (src/settings): her menu as it is, laid out in sections.
+// Built from the very same items (so nothing is ever only in one of them): a click there runs the
+// item's own click, the menu is rebuilt and the window redrawn. ----
+let lastTemplate = [];
+let settingsTitle = 'Settings';
+let settingsWin = null;
+let settingsItems = new Map(); // id -> menu item
+function settingsTree(items, prefix = '') {
+  const out = [];
+  items.forEach((item, i) => {
+    if (!item) return;
+    const id = `${prefix}${i}`;
+    if (item.type === 'separator') { out.push({ id, type: 'separator' }); return; }
+    const sub = typeof item.submenu === 'function' ? null : item.submenu;
+    settingsItems.set(id, item);
+    out.push({
+      id, label: String(item.label || ''), type: item.type || (sub ? 'submenu' : item.click ? 'action' : 'info'),
+      checked: Boolean(item.checked), enabled: item.enabled !== false, children: Array.isArray(sub) ? settingsTree(sub, `${id}.`) : undefined,
+    });
+  });
+  return out;
+}
+function settingsSend() {
+  if (!settingsWin || settingsWin.isDestroyed()) return;
+  settingsItems = new Map();
+  const cfg = config.load();
+  settingsWin.webContents.send('settings:tree', { title: settingsTitle, items: settingsTree(lastTemplate), theme: cfg.theme, lang: resolveLang(cfg.lang) });
+}
+function openSettings() {
+  if (settingsWin) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 860, height: 720, minWidth: 520, minHeight: 420, title: settingsTitle, autoHideMenuBar: true, backgroundColor: '#14101c',
+    icon: path.join(ROOT, 'assets', 'icons', 'tray.png'),
+    webPreferences: { preload: path.join(__dirname, '..', 'settings', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  settingsWin.loadURL('capri://app/src/settings/settings.html');
+  settingsWin.webContents.on('did-finish-load', () => settingsSend());
+  settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  settingsWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  settingsWin.on('closed', () => { settingsWin = null; });
 }
 
 // Run from a clone (`npm start`), electron.exe alone would open the default Electron app at login:
@@ -1888,6 +2023,18 @@ function registerIpc() {
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  ipcMain.on('update:now', () => updater?.downloadUpdate().catch((err) => overlay?.webContents.send('update:error', { error: err.message })));
+  // her settings window: an item clicked there, as if in her menu
+  ipcMain.on('settings:click', (_e, id) => {
+    const item = settingsItems.get(String(id));
+    if (!item?.click || item.enabled === false) return;
+    const checked = item.type === 'checkbox' ? !item.checked : true;
+    try { item.click({ ...item, checked }, null, {}); } catch (err) { console.error('[capri] settings:', err.message); }
+    setTimeout(() => { rebuildTray(); settingsSend(); }, 150);
+  });
+  ipcMain.on('settings:open', () => openSettings());
+  // light mode: Ollama's model off the graphics card (it loads again when she needs it)
+  ipcMain.handle('local:unload', async () => { await ollama.unload(await localModel(config.load())); return true; });
   // "me avisa quando o X entrar ao vivo": added, removed, listed
   ipcMain.handle('lives:set', async (_e, { op, site, name } = {}) => {
     const lives = require('./lives');
@@ -2413,6 +2560,7 @@ function main() {
     // her local model, ready for her: Ollama started if it's asleep (it may not start with Windows)
     setTimeout(() => wakeOllama().then(() => refreshModels()).catch(() => {}), 4000);
     ctxWatch(); // reminders tied to an app, from before
+    updatesStart(); // her new versions, asking first
     psnStart(); // your PS5, if connected
     spotifyStart(); // your Spotify, if connected
     noticesSync(); // your notifications, if she may read them

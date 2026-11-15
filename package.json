@@ -1,6 +1,6 @@
 {
   "name": "capri-desktop",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
   "repository": "github:mochiiwuff/capri-desktop",
@@ -27,7 +27,8 @@
     "mcp:install": "node scripts/install-mcp.js",
     "mcp:uninstall": "node scripts/install-mcp.js --uninstall",
     "vendor": "node scripts/fetch-vendor.js",
-    "predist": "node scripts/fetch-vendor.js"
+    "predist": "node scripts/fetch-vendor.js",
+    "release": "node scripts/release.js"
   },
   "keywords": [
     "claude-code",
@@ -50,6 +51,7 @@
     "@mediapipe/tasks-audio": "1.2.0",
     "@mediapipe/tasks-vision": "1.2.0",
     "@vladmandic/face-api": "1.7.15",
+    "electron-updater": "6.8.12",
     "psn-api": "2.18.1"
   },
   "build": {
@@ -80,6 +82,14 @@
       "createDesktopShortcut": true,
       "shortcutName": "Capri",
       "artifactName": "Capri-Setup-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ed2ac",
+        "repo": "capri-desktop",
+        "releaseType": "release"
+      }
+    ]
   }
 }

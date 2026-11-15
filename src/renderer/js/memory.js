@@ -165,6 +165,23 @@ export class Memory {
     return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
   }
 
+  // something she learned these last days, not checked with you yet: to ask "did I get it right?"
+  toCheck() {
+    const week = Date.now() - 7 * 86400000;
+    return this.ranked().find((i) => !i.checked && i.first > week && i.kind !== 'told'
+      && (['likes', 'dislikes', 'people', 'plans', 'projects', 'routine', 'fact'].includes(i.kind) || i.weight >= 60)) || null;
+  }
+
+  // your answer: right (kept, stronger), wrong (forgotten), or so-so (left as it is, not asked again)
+  checked(id, verdict) {
+    const i = this.items.find((x) => x.id === id);
+    if (!i) return;
+    if (verdict === 'wrong') return this.forget(id);
+    i.checked = true;
+    if (verdict === 'right') i.weight += 5;
+    this.dirty = true;
+  }
+
   // grouped, for her corner
   grouped() {
     return KINDS.map((kind) => ({ kind, items: this.ranked(kind) })).filter((g) => g.items.length);

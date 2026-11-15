@@ -35,6 +35,7 @@ import { Gestures } from './gestures.js';
 import { Watch } from './watch.js';
 import { Games } from './games.js';
 import { Memory } from './memory.js';
+import { Light } from './light.js';
 import { Shell } from './shell.js';
 import { Pc } from './pc.js';
 import { Care } from './care.js';
@@ -691,6 +692,9 @@ async function boot() {
   const art = new Art({ host });
   life.art = art;
   const presence = new Presence({ capri, panel, brain, host, camera, look, play, shell, life, heart, voice, chat, guide, art, face, hands: chat.hands });
+  heart.away = () => presence.away; // her longing grows while you're away (heart.js)
+  if (!chat.heart) chat.heart = heart;
+  if (!daily.heart) daily.heart = heart;
   brain.presence = presence;
   chat.hands.presence = presence;
   // the PC locked: who comes to it, a sound and a notification, and what she saw once it's unlocked
@@ -830,6 +834,17 @@ async function boot() {
     panel.say({ kind: 'info', face: 'laugh', line, quote: title ? title.slice(0, 120) : '', hold: 15000, actions: [{ id: 'watch', label: l.watch, primary: true }, { id: 'no', label: l.later }],
       onAction: (id) => { panel.hide(); if (id === 'watch') host.openSite(url); } });
   }));
+  // a new version of her (main updatesStart): she asks, then updates herself
+  host.onUpdate?.(({ version }) => whenFree(() => guide.scene(async () => {
+    const u = brain.t.update;
+    capri.perform('curious', capri.towardCenter());
+    const yes = (await guide.ask({ face: 'look', line: fmt(u.ask, { version }), actions: [{ id: 'yes', label: u.yes, primary: true }, { id: 'no', label: u.later }] })) === 'yes';
+    if (!yes) return;
+    panel.say({ kind: 'work', face: 'smug', line: u.downloading, hold: 8000 });
+    host.updateNow();
+  })));
+  host.onUpdateProgress?.(({ percent }) => panel.setTicker({ verb: 'UPDATE', target: `${percent}%` }));
+  host.onUpdateError?.(({ error }) => { panel.setTicker(null); panel.say({ kind: 'info', face: 'aside', line: fmt(brain.t.update.failed, { error }), hold: 6000 }); });
   // her offline voice: download progress, and ready
   host.onVoiceProgress?.(({ done, size }) => panel.setTicker({ verb: 'WHISPER', target: `${Math.round((done / size) * 100)}% · ${Math.round(done / 1e6)} MB` }));
   host.onVoiceReady?.((info) => panel.say({ kind: info.ok ? 'done' : 'error', face: info.ok ? 'laugh' : 'aside', line: info.ok ? brain.t.voice.ready : fmt(brain.t.voice.failed, { error: info.error || '…' }), hold: 6000 }));
@@ -842,9 +857,21 @@ async function boot() {
     if ((await guide.ask({ face: 'look', line: s.disconnectAsk, actions: [{ id: 'yes', label: s.disconnect, primary: true }, { id: 'no', label: s.keep }] })) === 'yes') host.spotifyDisconnect();
   }));
   // your PS5 (main psn.js): a game started or ended, your games' play time, the connection expired
-  host.onPsn?.(({ type, game, minutes }) => {
+  host.onPsn?.(({ type, game, minutes, list }) => {
     const p = brain.t.psn;
     if (type === 'expired') return panel.say({ kind: 'info', face: 'aside', line: p.expired, hold: 8000 });
+    if (type === 'trophies') {
+      // a platinum is a party; others, a word (the best one)
+      const best = list[0];
+      const plat = best.kind === 'platinum';
+      heart.nudge(plat ? 'platinum' : 'trophy');
+      memory.observe('games', best.name, best.name, { weight: plat ? 120 : 10, source: 'ps5' });
+      const line = fmt(pick(plat ? p.platinum : p.trophy), { game: best.name, kind: p.kinds[best.kind], progress: best.progress });
+      if (presence.note(line)) return undefined;
+      if (plat) capri.celebrate?.({ onSpeak: () => panel.say({ kind: 'done', badge: '🏆', face: 'laugh', line, hold: 9000 }) });
+      else { capri.wake(); capri.perform('hop', capri.towardCenter()); panel.say({ kind: 'info', face: 'smug', line, hold: 6000 }); }
+      return undefined;
+    }
     if (type === 'start') {
       memory.observe('games', game, game, { weight: 1, source: 'ps5' });
       if (presence.note(fmt(p.startedAway, { game }))) return undefined;
@@ -902,6 +929,7 @@ async function boot() {
   Object.assign(chat, { memory });
   Object.assign(converse, { memory });
   activity.memory = memory;
+  daily.memory = memory;
   chat.onClosed = () => {
     converse.onClose();
     const session = chat.history.slice(chat.sessionFrom ?? chat.history.length);
@@ -911,6 +939,27 @@ async function boot() {
   const hearing = new Hearing({ capri, panel, brain, voice, heart, emotions, daily, guide, host });
   hearing.configure(config);
   hearing.watch = watch; // a film on: its sounds aren't the room's (watch.js)
+  // once a day at most: something she learned about you lately, checked with you ("did I get it right?")
+  setInterval(() => {
+    const day = new Date().toDateString();
+    if (config.checkDay === day || presence.state !== 'here' || light.on || daily.focus || !look.free() || chat.open || guide.running) return;
+    const item = memory.toCheck();
+    if (!item) return;
+    config.checkDay = day;
+    host.setConfig({ checkDay: day });
+    const m = brain.t.memoryCheck;
+    const what = { games: fmt(m.games, { x: item.label }), music: fmt(m.music, { x: item.label }), freeTime: fmt(m.freeTime, { x: item.label }) }[item.kind] || item.label;
+    guide.scene(async () => {
+      capri.perform('curious', capri.towardCenter());
+      const v = await guide.ask({ face: 'look', line: fmt(pick(m.ask), { what }), actions: [{ id: 'right', label: m.right, primary: true }, { id: 'wrong', label: m.wrong }, { id: 'soso', label: m.soso }] });
+      if (!v) return;
+      memory.checked(item.id, v);
+      panel.say({ kind: 'info', face: v === 'wrong' ? 'aside' : 'laugh', line: m[`after_${v}`], hold: 3500 });
+    });
+  }, 10 * 60000);
+  // light mode (light.js): in games by default, and whatever else you picked in her menu
+  const light = new Light({ capri, panel, brain, host, camera, gestures, hearing, speech, look, converse, life, face, hands: chat.hands });
+  light.configure(config);
   // her name: she perks up and listens to what you say next (mic.js)
   hearing.onWake = () => {
     if (mic.rec || mic.asking || chat.turn || guide.running) return;
@@ -940,7 +989,7 @@ async function boot() {
     activity.obs = on;
   });
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, watch, memory, hands: chat.hands, pc, setup, breaks, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, activity, shell, play, speech, guard, daily, heart, emotions, progress, mic, senses, life, camera, hearing, face, presence, art, lockWatch, converse, gestures, watch, memory, light, hands: chat.hands, pc, setup, breaks, screens: () => screens };
   // what she feels (bond.js), into her heart too
   const feelHeart = { thrown: 'thrown', fun: 'thrownFun', dizzy: 'thrown', angry: 'thrown', jealous: 'jealous', sulk: 'jealous', petted: 'pet', forgiven: 'sorry', shooed: 'shoo', poked: 'poke', pranked: 'prank' };
   const feel = bond.feel.bind(bond);
@@ -1116,6 +1165,7 @@ async function boot() {
     converse.configure(cfg);
     gestures.configure(cfg);
     memory.configure(cfg);
+    light.configure(cfg);
     if (inCall) voice.muted = true; // her sound stays off until the call is over
     pc.enabled = cfg.pcReact !== false;
     breaks.enabled = cfg.breaks !== false;

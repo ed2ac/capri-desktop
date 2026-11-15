@@ -75,4 +75,30 @@ async function games(onRefresh) {
   return (r.titles || []).map((t) => ({ name: t.localizedName || t.name, minutes: Math.round(parseDuration(t.playDuration)), last: t.lastPlayedDateTime })).filter((g) => g.name);
 }
 
-module.exports = { connect, use, presence, games, parseDuration };
+// your trophies, per game: { [id]: { name, bronze, silver, gold, platinum, progress } }
+async function trophies(onRefresh) {
+  const a = await auth(onRefresh);
+  const r = await psn.getUserTitles(a, 'me', { limit: 60 });
+  const out = {};
+  for (const t of r.trophyTitles || []) {
+    const e = t.earnedTrophies || {};
+    out[t.npCommunicationId] = { name: t.trophyTitleName, bronze: e.bronze || 0, silver: e.silver || 0, gold: e.gold || 0, platinum: e.platinum || 0, progress: t.progress || 0 };
+  }
+  return out;
+}
+
+// what's new between two looks at your trophies: [{ name, kind, count, progress }] (best kind first)
+function newTrophies(before, now) {
+  const out = [];
+  for (const [id, t] of Object.entries(now)) {
+    const b = before[id];
+    if (!b) continue; // a game new to the list: its old trophies aren't news
+    for (const kind of ['platinum', 'gold', 'silver', 'bronze']) {
+      const d = (t[kind] || 0) - (b[kind] || 0);
+      if (d > 0) out.push({ name: t.name, kind, count: d, progress: t.progress });
+    }
+  }
+  return out;
+}
+
+module.exports = { connect, use, presence, games, trophies, newTrophies, parseDuration };

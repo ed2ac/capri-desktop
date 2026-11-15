@@ -61,7 +61,7 @@ export class Gestures {
 
   // camera.js, each frame with a face: the video, the face's landmarks, its pose
   frame(video, face, pose, now = Date.now()) {
-    if (!this.on) return;
+    if (!this.on || this.light) return; // light mode (light.js): no gestures
     if (pose) this.onPose(pose, face, now);
     if (!this.recognizer || now - this.lastAt < EVERY_MS || this.presence?.away) return;
     this.lastAt = now;
@@ -138,9 +138,9 @@ export class Gestures {
     };
     if (kind === 'wave') { say(pick(t.wave), 'laugh', 'hop'); float('👋'); this.heart?.nudge('attention'); }
     else if (kind === 'thumbsUp') { say(pick(t.thumbsUp), 'smug', 'victory'); this.heart?.nudge('praise', 0.5); }
-    else if (kind === 'thumbsDown') say(pick(t.thumbsDown), 'aside', 'huff');
+    else if (kind === 'thumbsDown') { say(pick(t.thumbsDown), 'aside', 'huff'); this.heart?.nudge('dislike'); }
     else if (kind === 'peace') { say(pick(t.peace), 'laugh', 'hop'); float('✌️'); }
-    else if (kind === 'love') { say(pick(t.love), 'laugh', 'petted'); float('♥', 5); this.heart?.nudge('pet'); }
+    else if (kind === 'love') { say(pick(t.love), 'laugh', 'petted'); float('♥', 5); this.heart?.nudge('love'); }
     else if (kind === 'fist') { say(pick(t.fist), 'smug', 'point'); float('👊'); }
     else if (kind === 'stop') {
       // she stops and stays where she is a while

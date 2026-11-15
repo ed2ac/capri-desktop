@@ -205,3 +205,11 @@ test('her lines stay as long as it takes to read them', async () => {
   assert.equal(readingTime({ kind: 'info', line: 'x'.repeat(2000), hold: 4000 }), 16000); // never too long
   assert.equal(readingTime({ kind: 'alert', line: 'Oi!', hold: 9000 }), 9000); // what matters keeps its time
 });
+
+test('new PS5 trophies between two looks', async () => {
+  const { createRequire } = await import('node:module');
+  const { newTrophies } = createRequire(import.meta.url)('../../src/main/psn.js');
+  const before = { a: { name: 'Astro Bot', bronze: 10, silver: 2, gold: 1, platinum: 0, progress: 80 } };
+  const now = { a: { name: 'Astro Bot', bronze: 12, silver: 2, gold: 1, platinum: 1, progress: 100 }, b: { name: 'Novo', bronze: 5, silver: 0, gold: 0, platinum: 0 } };
+  assert.deepEqual(newTrophies(before, now).map((t) => `${t.kind}:${t.count}`), ['platinum:1', 'bronze:2']);
+});

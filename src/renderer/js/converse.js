@@ -162,7 +162,7 @@ export class Converse {
 
   async maybeStart() {
     const now = Date.now();
-    if (!this.ready() || this.chat.open || this.presence?.state !== 'here') return;
+    if (!this.ready() || this.light || this.chat.open || this.presence?.state !== 'here') return;
     if (now - this.lastStarter < rand(this.gap[0], this.gap[1]) * 60000 || now - this.startedAt < 5 * 60000) return;
     const c = this.capri;
     if (c.busy || c.mode !== 'idle' || this.panel.visible || this.daily?.focus || this.camera?.paused || this.watch?.on) return;

@@ -64,15 +64,31 @@ export class Life {
     const c = this.capri;
     const night = new Date().getHours() < 6;
     const still = this.play?.mouse && performance.now() - (this.lastPointer || 0) > 8000;
+    const st = this.heart?.state || 'content';
+    // how she feels shapes what she feels like doing (heart.js)
+    const feel = (list) => list.map(([what, w]) => [what, w * ({
+      radiant: { workout: 1.8, juggle: 1.8, hum: 1.5, explore: 1.4, nap: 0.3 },
+      playful: { sneak: 2, juggle: 1.6, explore: 1.5, doodle: 1.4, nap: 0.3 },
+      happy: { hum: 1.6, doodle: 1.3, stroll: 1.2 },
+      calm: { stars: 1.5, read: 1.6, hum: 1.2, workout: 0.5 },
+      sleepy: { nap: 3, stars: 1.3, workout: 0.1, juggle: 0.2, explore: 0.3 },
+      tired: { nap: 2, read: 1.5, workout: 0.3 },
+      bored: { sneak: 2, explore: 1.6, watch: 1.5, doodle: 1.4 },
+      missing: { watch: 2.2, sneak: 1.5, stroll: 1.2 },
+      anxious: { stroll: 1.8, clock: 1.6, hum: 0.6, nap: 0.4 },
+      grumpy: { classic: 1.5, muse: 1.5, hum: 0.4, juggle: 0.4 },
+      down: { stars: 1.8, read: 1.4, workout: 0.4, juggle: 0.5 },
+      sad: { stars: 2.5, read: 1.6, nap: 1.4, hum: 0.5, workout: 0.2, juggle: 0.2, sneak: 0.2 },
+    }[st]?.[what] ?? 1)]).filter(([, w]) => w > 0);
     if (this.away) {
-      return [
-        ['draw', this.art && !this.art.drawing && Date.now() - (this.drewAt || 0) > 5 * 60000 ? 3 : 0],
+      return feel([
+        ['draw', this.art && !this.light && !this.art.drawing && Date.now() - (this.drewAt || 0) > 5 * 60000 ? 3 : 0],
         ['doodle', 1.2], ['juggle', h.energy > 30 ? 2 : 0.5], ['workout', h.energy > 45 ? 1.8 : 0.3],
         ['explore', (c.windows?.wins || []).length >= 2 ? 1.5 : 0], ['stroll', 2], ['hum', 2], ['stars', 1.2],
         ['read', 1.5], ['clock', 0.5], ['nap', h.energy < 35 ? 2 : 0], ['classic', 1],
-      ].filter(([, w]) => w > 0);
+      ].filter(([, w]) => w > 0));
     }
-    return [
+    return feel([
       ['classic', 2],
       ['stroll', h.energy > 35 ? 3 : 0.5],
       ['clock', 0.7],
@@ -86,11 +102,13 @@ export class Life {
       ['nap', h.energy < 35 || night ? 3 : 0],
       ['stars', night || h.mood < 40 ? 1.5 : 0.4],
       ['muse', Date.now() - this.mutterAt > 15 * 60000 ? 0.8 : 0],
-    ].filter(([, w]) => w > 0);
+      ['read', 0.6],
+    ].filter(([, w]) => w > 0));
   }
 
   step() {
     if (this.holding() || this.watching) return; // she stays where your click is going; or she's watching with you (watch.js)
+    if (this.light && Math.random() < 0.6) return; // light mode (light.js): she moves less
     this.lastMove = performance.now();
     this.capri.lastActivity = performance.now(); // what she does counts as doing something
     this.homeIn = rand(120000, 240000);
@@ -267,6 +285,7 @@ export class Life {
     c.facing = right ? 1 : -1;
     c.perform('curious', right ? 1 : -1);
     const done = await this.art.draw({ x, y, size, reduced: reducedMotion.matches });
+    if (done) this.heart?.nudge('drawing'); // she likes drawing
     if (done && !c.busy) c.perform('hop', right ? 1 : -1);
     return undefined;
   }

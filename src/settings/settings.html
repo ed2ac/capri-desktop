@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="nightcity">
+<head>
+  <meta charset="utf-8">
+  <!-- Her settings: her menu's items, in sections. Nothing from outside. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurações</title>
+  <link rel="stylesheet" href="../workshop/workshop.css">
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="dot on"></span>
+      <div>
+        <p class="label"><span class="who">CAPRI</span><span class="tag">CONFIG</span></p>
+        <h1 id="title">Configurações</h1>
+      </div>
+    </div>
+    <input id="find" class="find" type="search" placeholder="Buscar…" aria-label="Buscar">
+  </header>
+  <main class="pane">
+    <nav id="nav" class="nav" aria-label="Seções"></nav>
+    <section id="sections" class="sections"></section>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

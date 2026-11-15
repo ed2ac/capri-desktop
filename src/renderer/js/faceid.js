@@ -247,6 +247,7 @@ export class FaceId {
 
   async tick() {
     if (!this.camera.on || !this.camera.stream || !this.known?.owner || this.busy) return;
+    if (this.light && (this.lightTicks = (this.lightTicks || 0) + 1) % 4) return; // light mode: a look every 12 s
     this.busy = true;
     try {
       const faces = await this.readings().catch(() => null);

@@ -1,40 +1,60 @@
 // Her heart: how she is inside, the one thing all the rest of her feeds and reads.
 //
 //   energy   0–100  the hour (low deep in the night, back up in the morning), your battery, the
-//                   processor burning, petting and good news lift it, a long day wears it down
-//   mood     0–100  your wins (tests passing, a task done, a game won, a focus session) and the
-//                   kind things (petting, a thank-you) lift it; errors, being shooed, poked or
-//                   thrown, other AIs, losses bring it down; it drifts back to the middle
+//                   processor burning, music, petting and good news lift it, a long day wears it down
+//   mood     0–100  how she feels: lifted by kind words, petting, your wins, music, a sunny day, you
+//                   coming back; brought down by harsh words, being shooed or ignored, losses, errors.
+//                   It drifts back to her day's mood (base), not to the middle
+//   base     35–75  her mood of the day: follows her mood slowly (hours), kept from one day to the
+//                   next, so she has good days and bad days that last
 //   boredom  0–100  grows while you ignore her, drops with any attention
+//   longing  0–100  grows while you're away a long while; when you're back it turns into joy
+//   stress   0–100  yours and hers: rage clicks, failing commands, you up at 3 a.m., threats; fades
 //   affection       how close she is to you (bond.js), as it is
 //
-// What reads it: her AI's lines and her chat (persona), her babble's pitch and pace (voice.js),
-// how often she pranks (play.js) and talks about what you do (activity.js), what she does on her
-// own (dozing when drained, hopping when happy), and her emotions: fear, pride, shame, curiosity.
+// From these, a state with a name (radiant, happy, playful, content, calm, sleepy, tired, bored,
+// missing you, anxious, grumpy, sad) that colors how she talks (her AI's persona), how much she
+// talks and plays, what she does on her own (life.js), and her voice (voice.js).
 // Kept on this PC (localStorage), so she wakes up as she went to sleep, more or less.
 
 import { rand } from './util.js';
 
 const STORE = 'capri.heart.v1';
-const clamp = (v) => Math.max(0, Math.min(100, v));
-// how much each thing moves her: [energy, mood, boredom]
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+// how much each thing moves her: [energy, mood, boredom, stress, longing]
 const NUDGES = {
-  pet: [4, 6, -30], attention: [0, 1, -25], chat: [1, 2, -20], thanks: [2, 6, -10], praise: [2, 8, -10],
-  shoo: [-2, -8, -5], poke: [0, -3, -5], thrown: [-4, -6, -10], thrownFun: [2, 6, -15], jealous: [0, -7, 0], sorry: [0, 6, -5],
-  claudeDone: [1, 4, 0], claudeError: [0, -2, 0], testsPass: [1, 6, 0], push: [1, 4, 0], fail: [0, -3, 0],
-  taskDone: [2, 7, -10], taskFail: [0, -4, 0], focusDone: [3, 8, 0], todoDone: [1, 5, -5],
-  gameWin: [2, 9, 0], gameLoss: [-1, -5, 0], threat: [-5, -12, 0], hot: [-4, -2, 0], lowBattery: [-10, -4, 0],
-  charging: [8, 2, 0], morning: [15, 3, 0], prank: [0, 5, -15], found: [3, 8, -40],
+  pet: [4, 6, -30, -6, -10], attention: [0, 1, -25, 0, -5], chat: [1, 2, -20, -2, -15], thanks: [2, 6, -10, -3, 0], praise: [2, 8, -10, -4, 0],
+  love: [3, 10, -15, -6, -10], hurt: [-2, -10, 0, 8, 0], sorry: [0, 6, -5, -6, 0], dislike: [0, -4, 0, 2, 0],
+  shoo: [-2, -8, -5, 3, 0], poke: [0, -3, -5, 1, 0], thrown: [-4, -6, -10, 5, 0], thrownFun: [2, 6, -15, -2, 0], jealous: [0, -7, 0, 4, 0],
+  claudeDone: [1, 4, 0, -3, 0], claudeError: [0, -2, 0, 2, 0], testsPass: [1, 6, 0, -4, 0], push: [1, 4, 0, -2, 0], fail: [0, -3, 0, 4, 0],
+  taskDone: [2, 7, -10, -4, 0], taskFail: [0, -4, 0, 4, 0], focusDone: [3, 8, 0, -5, 0], todoDone: [1, 5, -5, -3, 0],
+  gameWin: [2, 9, 0, -3, 0], gameLoss: [-1, -5, 0, 3, 0], trophy: [2, 7, -5, -2, 0], platinum: [6, 18, -10, -8, 0],
+  threat: [-5, -12, 0, 15, 0], hot: [-4, -2, 0, 2, 0], lowBattery: [-10, -4, 0, 5, 0], charging: [8, 2, 0, -2, 0],
+  morning: [15, 3, 0, -5, 0], prank: [0, 5, -15, -2, 0], found: [3, 8, -40, -2, 0],
+  music: [3, 3, -8, -3, 0], dance: [4, 5, -12, -4, 0], sunny: [3, 3, 0, -1, 0], rain: [-3, -1, 0, 0, 0], cold: [-2, -1, 0, 0, 0],
+  userStress: [0, -2, 0, 6, 0], lateNight: [-2, -1, 0, 4, 0], drawing: [1, 3, -10, -2, 0],
 };
 
 // how often some things count at most (ms)
-const RATE = { claudeDone: 10 * 60000, claudeError: 3 * 60000, chat: 2 * 60000, attention: 60000, fail: 60000, push: 5 * 60000, hot: 15 * 60000 };
+const RATE = {
+  claudeDone: 10 * 60000, claudeError: 3 * 60000, chat: 2 * 60000, attention: 60000, fail: 60000, push: 5 * 60000, hot: 15 * 60000,
+  music: 10 * 60000, dance: 10 * 60000, sunny: 3 * 3600000, rain: 3 * 3600000, cold: 3 * 3600000, userStress: 5 * 60000, lateNight: 30 * 60000,
+  praise: 60000, love: 2 * 60000, hurt: 60000, trophy: 60000,
+};
+
+// the words in what you write to her that touch her (Portuguese and English)
+const WORDS = [
+  ['love', /\b(te amo|amo voc[êe]|i love you|love you|minha linda|meu amor|fofa demais|melhor amiga)\b/i],
+  ['praise', /\b(obrigad[oa]|valeu|brigad[oa]|thanks|thank you|boa capri|mandou bem|perfeita|incr[íi]vel|linda|fofa|genial|you'?re (great|awesome|amazing)|good job|nice)\b/i],
+  ['hurt', /\b(cala a boca|chata|burra|idiota|in[úu]til|odeio voc[êe]|some daqui|vai embora|shut up|stupid|useless|i hate you|go away|annoying)\b/i],
+  ['sorry', /\b(desculpa|foi mal|perd[ãa]o|sorry|my bad)\b/i],
+];
 
 export class Heart {
   constructor({ bond }) {
     this.bond = bond;
     this.last = {};
-    this.s = { energy: 70, mood: 60, boredom: 10, at: Date.now() };
+    this.s = { energy: 70, mood: 60, boredom: 10, base: 55, longing: 0, stress: 10, at: Date.now() };
     try {
       const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
       if (saved && typeof saved.energy === 'number') this.s = { ...this.s, ...saved };
@@ -44,6 +64,7 @@ export class Heart {
     if (!this.s.v2) {
       this.s = { ...this.s, energy: Math.min(this.s.energy, 80), mood: Math.min(this.s.mood, 75), v2: true };
     }
+    for (const k of ['base', 'longing', 'stress']) if (typeof this.s[k] !== 'number') this.s[k] = { base: 55, longing: 0, stress: 10 }[k];
     this.catchUp();
     setInterval(() => this.tick(), 60000);
   }
@@ -51,6 +72,9 @@ export class Heart {
   get energy() { return Math.round(this.s.energy); }
   get mood() { return Math.round(this.s.mood); }
   get boredom() { return Math.round(this.s.boredom); }
+  get longing() { return Math.round(this.s.longing); }
+  get stress() { return Math.round(this.s.stress); }
+  get base() { return Math.round(this.s.base); }
   get affection() { return this.bond?.percent ?? 0; }
 
   onChange(fn) {
@@ -67,8 +91,7 @@ export class Heart {
 
   // Something happened (a key of NUDGES), `k` times as much. The nearer an edge, the less it moves
   // her (a tenth good thing in a row barely does), and her energy can't go far above what the hour
-  // gives. Some things count once in a while only (Claude finishing, every few minutes when you work
-  // with it all day).
+  // gives. Some things count once in a while only.
   nudge(kind, k = 1) {
     const n = NUDGES[kind];
     if (!n) return;
@@ -81,7 +104,24 @@ export class Heart {
     this.s.energy = Math.min(Math.max(cap, this.s.energy), clamp(this.s.energy + ease(this.s.energy, n[0] * k)));
     this.s.mood = clamp(this.s.mood + ease(this.s.mood, n[1] * k));
     this.s.boredom = clamp(this.s.boredom + n[2] * k);
+    this.s.stress = clamp(this.s.stress + (n[3] || 0) * k);
+    this.s.longing = clamp(this.s.longing + (n[4] || 0) * k);
     this.save();
+  }
+
+  // what you wrote to her: kind words, harsh ones, an apology
+  fromText(text) {
+    for (const [kind, re] of WORDS) if (re.test(String(text || ''))) this.nudge(kind);
+  }
+
+  // you're back after a while away (presence.js): what she missed turns into joy
+  back(minutes) {
+    const joy = this.s.longing * 0.18 + Math.min(10, minutes / 30);
+    this.s.mood = clamp(this.s.mood + joy);
+    this.s.boredom = clamp(this.s.boredom - 30);
+    this.s.longing = 0;
+    this.save();
+    return joy;
   }
 
   // what the hour does to her energy: low from 1 to 6, rising in the morning
@@ -93,63 +133,106 @@ export class Heart {
     return 80;
   }
 
-  // the time she was off: her energy follows the hour, her mood settles, boredom fades
+  // the time she was off: her energy follows the hour, her mood settles toward her day's, boredom fades
   catchUp() {
     const away = (Date.now() - (this.s.at || Date.now())) / 60000;
     if (away > 30) {
       this.s.energy = this.target();
-      this.s.mood = 50 + (this.s.mood - 50) * 0.3;
+      this.s.mood = this.s.base + (this.s.mood - this.s.base) * 0.3;
       this.s.boredom = 10;
+      this.s.stress = Math.max(5, this.s.stress * 0.3);
+      this.s.longing = clamp(this.s.longing + Math.min(40, away / 30)); // she was off a long while: she missed you
     }
   }
 
-  // every minute: energy toward the hour's, mood back toward the middle, boredom up while ignored
+  // every minute: energy toward the hour's, mood toward her day's, her day's toward her mood (slowly),
+  // boredom up while ignored, longing up while you're away, stress fading
   tick({ ignored = false } = {}) {
     const t = this.target();
     this.s.energy = clamp(this.s.energy + (t - this.s.energy) * 0.05);
-    this.s.mood = clamp(this.s.mood + (55 - this.s.mood) * 0.02);
-    if (ignored || this.ignored?.()) this.s.boredom = clamp(this.s.boredom + rand(0.8, 1.6));
+    this.s.mood = clamp(this.s.mood + (this.s.base - this.s.mood) * 0.02);
+    this.s.base = clamp(this.s.base + (this.s.mood - this.s.base) * 0.003, 35, 75);
+    if (ignored || this.ignored?.()) {
+      this.s.boredom = clamp(this.s.boredom + rand(0.8, 1.6));
+      if (this.s.boredom > 85) this.s.mood = clamp(this.s.mood - 0.2); // ignored a long time: it starts to sting
+    }
+    if (this.away?.()) this.s.longing = clamp(this.s.longing + 0.35);
+    else this.s.longing = clamp(this.s.longing - 0.5);
+    this.s.stress = clamp(this.s.stress - 0.8, 0);
+    const h = new Date().getHours();
+    if (h >= 1 && h < 5 && this.away && !this.away()) this.nudge('lateNight'); // you up at 3 a.m.: she worries
     this.save();
   }
 
   // ---- what the rest of her reads ----
 
-  // the word for it, for her menu and her AI
+  // the word for it, for her menu, her AI, what she does
   get state() {
-    if (this.s.energy < 25) return 'sleepy';
-    if (this.s.mood < 25) return 'down';
-    if (this.s.boredom > 70) return 'bored';
-    if (this.s.mood > 78) return 'great';
-    if (this.s.energy > 75 && this.s.mood > 60) return 'lively';
-    return 'fine';
+    const { energy: e, mood: m, boredom: b, longing: l, stress: s } = this.s;
+    if (e < 22) return 'sleepy';
+    if (l > 60) return 'missing';
+    if (s > 65) return 'anxious';
+    if (m < 22) return 'sad';
+    if (m < 40 && s > 30) return 'grumpy';
+    if (m < 38) return 'down';
+    if (b > 72) return 'bored';
+    if (m > 86 && e > 55) return 'radiant';
+    if (m > 68 && b > 35 && e > 55) return 'playful';
+    if (e < 40) return 'tired';
+    if (m > 72) return 'happy';
+    if (e < 60 && m < 65) return 'calm';
+    return 'content';
   }
 
   // for her AI: how she is right now, so her lines and her chat sound like it
   persona() {
-    const e = this.s.energy, m = this.s.mood, b = this.s.boredom;
-    const parts = [];
-    if (e < 25) parts.push('you are sleepy and low on energy: slower, shorter, yawning words');
-    else if (e > 80) parts.push('you are full of energy');
-    if (m < 25) parts.push('you are in a bad mood, a bit gloomy');
-    else if (m < 40) parts.push('you are a little down');
-    else if (m > 80) parts.push('you are in a great mood, playful and bright');
-    if (b > 70) parts.push('you are bored and want the user\'s attention');
-    return parts.length ? `How you feel inside right now: ${parts.join('; ')}. Let it show, without saying these numbers.` : '';
+    const style = {
+      radiant: 'you are radiant, over the moon: bright, warm, quick to laugh, a little extra',
+      happy: 'you are happy and warm: kind teasing, easy smiles',
+      playful: 'you are playful and mischievous: teasing, jokes, a bit of chaos',
+      content: 'you are content, at ease: relaxed and friendly',
+      calm: 'you are calm and quiet: soft, unhurried, fewer words',
+      sleepy: 'you are sleepy and low on energy: slow, short, yawning words',
+      tired: 'you are tired: shorter answers, a little flat, still kind',
+      bored: 'you are bored and want the user\'s attention: you poke at them, suggest something to do',
+      missing: 'you missed the user (they were away a long time): clingy, glad they are here, a little pouty about it',
+      anxious: 'you are tense and worried (the user seems stressed, or something went wrong): caring, a bit restless, you want them to take it easy',
+      grumpy: 'you are grumpy: dry, sarcastic, short, but you still care underneath',
+      down: 'you are a little down: quieter, less teasing',
+      sad: 'you are sad: quiet, soft, short, you could use some kindness (never guilt-trip them)',
+    }[this.state];
+    const extra = [];
+    if (this.s.base > 65) extra.push('it has been a good day for you');
+    else if (this.s.base < 45) extra.push('it has been a rough day for you');
+    if (new Date().getHours() < 5 && new Date().getHours() >= 1 && !this.away?.()) extra.push('it is very late and the user is still up: you nudge them to sleep');
+    return `How you feel inside right now: ${style}${extra.length ? `; ${extra.join('; ')}` : ''}. Let it show in how you talk, without naming it or giving numbers.`;
+  }
+
+  // a few words about it (converse.js, her diary)
+  describe() {
+    return this.state;
   }
 
   // her babble (voice.js): semitones up or down, and how much faster
   get voice() {
-    return { shift: (this.s.mood - 55) / 12 + (this.s.energy - 60) / 25, pace: 0.75 + this.s.energy / 200 };
+    return { shift: (this.s.mood - 55) / 12 + (this.s.energy - 60) / 25 - this.s.stress / 80, pace: 0.75 + this.s.energy / 200 + this.s.stress / 400 };
   }
 
-  // how likely she is to be up to something (play.js): 0.3 drained … 1.8 bored and lively
+  // how likely she is to be up to something (play.js): 0.2 sad … 1.9 playful
   get mischief() {
-    return Math.max(0.3, Math.min(1.8, (this.s.energy / 70) * (0.6 + this.s.boredom / 70) * (0.7 + this.s.mood / 150)));
+    const st = this.state;
+    const base = (this.s.energy / 70) * (0.6 + this.s.boredom / 70) * (0.7 + this.s.mood / 150);
+    const k = { playful: 1.3, radiant: 1.2, bored: 1.2, sad: 0.4, anxious: 0.5, sleepy: 0.5, tired: 0.6, grumpy: 0.8, down: 0.7, calm: 0.8 }[st] || 1;
+    return Math.max(0.2, Math.min(1.9, base * k));
   }
 
   // how much she talks about what you do (activity.js): a factor on the gap between comments
+  // (lower: talks more)
   get chattiness() {
-    return Math.max(0.6, Math.min(1.8, 1.3 - this.s.energy / 200 - this.s.boredom / 250));
+    const st = this.state;
+    const base = 1.3 - this.s.energy / 200 - this.s.boredom / 250;
+    const k = { playful: 0.8, radiant: 0.8, missing: 0.8, bored: 0.85, sad: 1.6, down: 1.3, tired: 1.4, sleepy: 1.6, calm: 1.2, grumpy: 1.1, anxious: 1.1 }[st] || 1;
+    return Math.max(0.6, Math.min(2, base * k));
   }
 
   // one line for her menu
@@ -157,3 +240,5 @@ export class Heart {
     return `${t.heartState[this.state] || this.state} · ⚡${this.energy} ♥${this.mood}`;
   }
 }
+
+export const HEART_NUDGES = NUDGES;

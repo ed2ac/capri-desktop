@@ -87,7 +87,8 @@ export class Presence {
   quiet(on) {
     for (const m of [this.look, this.play, this.shell, this.life]) if (m) m.away = on;
     if (this.brain) this.brain.hushed = on; // (brain.away() is something else: Claude's window not in front)
-    this.camera?.setRate?.(on ? (this.locked ? 1000 : GLANCE_MS) : null);
+    if (this.camera) this.camera.presenceRate = on ? (this.locked ? 1000 : GLANCE_MS) : null;
+    this.camera?.setRate?.(on ? (this.locked ? 1000 : GLANCE_MS) : (this.camera?.light ? 2000 : null));
   }
 
   goAway() {
@@ -157,6 +158,7 @@ export class Presence {
   // you're back: everything as it was, and what happened while you were gone
   back() {
     const was = Date.now() - this.since;
+    if (was > 20 * 60000) this.heart?.back(was / 60000); // she missed you: it turns into joy
     this.state = 'here';
     this.since = Date.now();
     this.quiet(false);

@@ -120,6 +120,7 @@ export class Senses {
       this.clicks = [];
       this.capri.perform('glare', pos.x < this.capri.pos.x ? -1 : 1);
       this.heart?.nudge('poke');
+      this.heart?.nudge('userStress'); // your frustration rubs off on her
       return void this.word('rageClick', 10 * 60000, 'aside');
     }
     // a click right next to her (not on her): she startles, or looks at it

@@ -1,0 +1,28 @@
+/* her settings: the workshop's plates (../workshop/workshop.css), a side list of sections */
+.find { margin-left: auto; width: min(280px, 40vw); background: var(--ink-3); color: var(--paper); border: 0; box-shadow: inset 0 0 0 1px var(--line); padding: 8px 10px; font: 400 13px var(--font-mono); }
+.find:focus-visible { outline: 2px solid var(--accent); }
+.pane { flex: 1; display: grid; grid-template-columns: 210px 1fr; gap: 22px; padding: 22px; min-height: 0; overflow: hidden; }
+.nav { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.nav button { text-align: left; }
+.sections { overflow: auto; display: flex; flex-direction: column; gap: 22px; padding: 4px 10px 30px 4px; }
+.group h2 { margin: 0 0 8px; font-size: 13px; color: var(--paper-2); letter-spacing: .08em; text-transform: uppercase; }
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows li { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.rows li:last-child { border-bottom: 0; }
+.rows .name { flex: 1; font-size: 14px; }
+.rows .info { color: var(--paper-3); font-family: var(--font-mono); font-size: 12px; font-weight: 400; }
+.rows li.disabled { opacity: .45; }
+.sub { margin: 4px 0 6px 14px; padding-left: 12px; border-left: 2px solid var(--line); }
+.sub-title { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--data); margin: 10px 0 2px; }
+/* a switch: her accent when on */
+.switch { position: relative; width: 42px; height: 22px; flex: none; background: var(--ink-3); box-shadow: inset 0 0 0 2px var(--line); border: 0; cursor: pointer; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%); }
+.switch::after { content: ''; position: absolute; top: 4px; left: 4px; width: 14px; height: 14px; background: var(--paper-3); transition: left .15s var(--ease-out), background .15s; }
+.switch[aria-checked='true'] { box-shadow: inset 0 0 0 2px var(--accent); }
+.switch[aria-checked='true']::after { left: 24px; background: var(--accent); }
+.switch:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+.radio { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio .btn { padding: 5px 10px 4px 12px; font-size: 11px; }
+.hidden { display: none !important; }
+@media (max-width: 680px) { .pane { grid-template-columns: 1fr; } .nav { flex-direction: row; flex-wrap: wrap; } }
+
+.rows li.actions { flex-wrap: wrap; gap: 8px; }

@@ -1059,7 +1059,7 @@ export const LINES = {
       yes: 'Sure', no: 'Not now', noMic: 'I couldn’t use your microphone.', listening: 'listening…', transcribing: 'making it out…',
       noKey: 'To hear you I need your Groq key: menu › AI model › API key.', failed: 'I didn’t catch that: {error}',
     },
-    heartState: { sleepy: 'Sleepy', down: 'Down', bored: 'Bored', great: 'Radiant', lively: 'Lively', fine: 'Fine' },
+    heartState: { radiant: 'Radiant', happy: 'Happy', playful: 'Playful', content: 'Content', calm: 'Calm', sleepy: 'Sleepy', tired: 'Tired', bored: 'Bored', missing: 'Missing you', anxious: 'Anxious', grumpy: 'Grumpy', down: 'Down', sad: 'Sad', great: 'Radiant', lively: 'Lively', fine: 'Fine' },
     // her senses: keyboard, mouse and the screen (senses.js)
     senses: {
       ask: 'Can I feel your keyboard and your mouse?',
@@ -1104,6 +1104,12 @@ export const LINES = {
     },
     life: { clock: ['It’s {time} already. Time flies when I’m here.', '{time}… still time for plenty.', 'Look at the clock: {time}.'] },
     badges: { feed: 'FEED', scan: 'SCAN', shot: 'SHOT', cam: 'CAM', link: 'LINK', review: 'REVIEW' },
+    // her updates (main updatesStart)
+    update: { ask: 'There’s a new version of me ({version}). Update now? I’ll be back in a minute.', yes: 'Update', later: 'Later', downloading: 'Downloading my upgrade… I’ll restart on my own.', failed: 'My update didn’t work: {error}' },
+    // checking what she learned (memory.js)
+    memoryCheck: { ask: ['I’ve noticed lately: {what}. Did I get that right?', 'Tell me if I’m wrong: {what}?'], games: 'you’ve been into {x}', music: 'you listen to a lot of {x}', freeTime: 'you spend your free time on {x}', right: 'Spot on', wrong: 'Wrong', soso: 'Sort of', after_right: 'Knew it. I’m paying attention, see?', after_wrong: 'Oops. Forgotten.', after_soso: 'Okay, I’ll keep it in mind, loosely.' },
+    // light mode (light.js)
+    light: { claude: 'Claude’s working hard: I’ll keep quiet and light so I don’t slow anything down.', heavy: 'Your PC is sweating: light mode for me until it calms down.', battery: 'On battery: I’ll take it easy to save it.', always: 'Light mode on: I’ll be quiet and easy on your PC.' },
     // a Gemini key for her camera (main vision:key)
     gemini: { ask: 'Paste your Gemini API key (for my camera only; my chat stays as it is):', placeholder: 'Your Gemini key', save: 'Save', page: 'Get a free key', how: 'Google AI Studio (button) › Create API key. It’s free. Only my camera pictures go to Google with it; your screen stays on your PC.', ok: 'Done: my camera sees through {model} now. Much better eyes.', badFormat: 'That doesn’t look like a key (no spaces, at least 20 characters). Copy it again?', rejected: 'Google didn’t accept that key. Copy it again?' },
     // streamers going live (main lives.js)
@@ -1132,6 +1138,7 @@ export const LINES = {
       expired: 'My PS5 link expired (they last about 2 months). Connect it again from my menu when you can.',
       started: ['Off to the PS5 for some {game}? Have fun!', '{game} on the PS5, huh? Don’t forget about me.'], startedAway: 'You played {game} on the PS5.',
       stopped: ['{minutes} of {game}. So, how did it go?', 'Back from {game} ({minutes})? Tell me everything.'],
+      trophy: ['A {kind} trophy in {game}! ({progress}% done)', 'Ooh, {kind} in {game}. Nice one, choom.'], platinum: ['PLATINUM in {game}!! You absolute legend!', 'Platinum! {game} is done-done. I’m so proud of you!'], kinds: { platinum: 'platinum', gold: 'gold', silver: 'silver', bronze: 'bronze' },
       disconnectAsk: 'Disconnect your PS5 from me?', disconnect: 'Disconnect', keep: 'Keep it',
     },
     // Claude Code talking through her (MCP)
@@ -2330,7 +2337,7 @@ export const LINES = {
       yes: 'Pode', no: 'Agora não', noMic: 'Não consegui usar seu microfone.', listening: 'te ouvindo…', transcribing: 'entendendo…',
       noKey: 'Pra te ouvir eu preciso da chave do Groq: menu › Modelo de IA › Chave de API.', failed: 'Não entendi: {error}',
     },
-    heartState: { sleepy: 'Com sono', down: 'Pra baixo', bored: 'Entediada', great: 'Radiante', lively: 'Animada', fine: 'De boa' },
+    heartState: { radiant: 'Radiante', happy: 'Feliz', playful: 'Brincalhona', content: 'De boa', calm: 'Tranquila', sleepy: 'Com sono', tired: 'Cansada', bored: 'Entediada', missing: 'Com saudade', anxious: 'Ansiosa', grumpy: 'Rabugenta', down: 'Pra baixo', sad: 'Triste', great: 'Radiante', lively: 'Animada', fine: 'De boa' },
     // os sentidos dela: teclado, mouse e a tela (senses.js)
     senses: {
       ask: 'Posso sentir seu teclado e seu mouse?',
@@ -2375,6 +2382,12 @@ export const LINES = {
     },
     life: { clock: ['Já são {time}. O tempo voa quando eu tô aqui.', '{time}… ainda dá tempo de muita coisa.', 'Olha o relógio: {time}.'] },
     badges: { feed: 'OLHO', scan: 'VARREDURA', shot: 'PRINT', cam: 'CÂMERA', link: 'LINK', review: 'REVISÃO' },
+    // as atualizações dela (main updatesStart)
+    update: { ask: 'Tem uma versão nova minha ({version}). Atualizo agora? Volto em um minutinho.', yes: 'Atualizar', later: 'Depois', downloading: 'Baixando meu upgrade… eu reinicio sozinha.', failed: 'Minha atualização não deu certo: {error}' },
+    // conferindo o que ela aprendeu (memory.js)
+    memoryCheck: { ask: ['Tenho reparado uma coisa: {what}. Acertei?', 'Me corrige se eu tiver errada: {what}?'], games: 'você tá viciado em {x}', music: 'você ouve muito {x}', freeTime: 'você passa o tempo livre no {x}', right: 'Acertou', wrong: 'Errou', soso: 'Mais ou menos', after_right: 'Eu sabia. Tô prestando atenção, viu?', after_wrong: 'Ops. Esquecido.', after_soso: 'Tá, vou guardar, mas sem muita certeza.' },
+    // modo leve (light.js)
+    light: { claude: 'O Claude tá trabalhando pesado: vou ficar quietinha e leve pra não atrapalhar.', heavy: 'Seu PC tá suando: modo leve pra mim até ele acalmar.', battery: 'Na bateria: vou pegar leve pra economizar.', always: 'Modo leve ligado: fico quietinha e leve pro seu PC.' },
     // a chave do Gemini pra câmera (main vision:key)
     gemini: { ask: 'Cola sua chave do Gemini (só pra minha câmera; meu chat continua como tá):', placeholder: 'Sua chave do Gemini', save: 'Salvar', page: 'Pegar uma chave grátis', how: 'Google AI Studio (botão) › Create API key. É grátis. Com ela só as imagens da câmera vão pro Google; sua tela continua no seu PC.', ok: 'Pronto: minha câmera agora enxerga pelo {model}. Olhos bem melhores.', badFormat: 'Isso não parece uma chave (sem espaços, com pelo menos 20 caracteres). Copia de novo?', rejected: 'O Google não aceitou essa chave. Copia de novo?' },
     // lives (main lives.js)
@@ -2403,6 +2416,7 @@ export const LINES = {
       expired: 'A ligação com seu PS5 expirou (dura uns 2 meses). Liga de novo pelo meu menu quando puder.',
       started: ['Foi pro PS5 jogar {game}? Bom jogo!', '{game} no PS5, é? Não esquece de mim.'], startedAway: 'Você foi jogar {game} no PS5.',
       stopped: ['{minutes} de {game}. E aí, como foi?', 'Voltou do {game} ({minutes})? Me conta tudo.'],
+      trophy: ['Troféu de {kind} no {game}! ({progress}% feito)', 'Opa, {kind} no {game}. Mandou bem, choom.'], platinum: ['PLATINA no {game}!! Você é uma lenda!', 'Platinou! {game} tá zerado de verdade. Tô muito orgulhosa!'], kinds: { platinum: 'platina', gold: 'ouro', silver: 'prata', bronze: 'bronze' },
       disconnectAsk: 'Desligar seu PS5 de mim?', disconnect: 'Desligar', keep: 'Manter',
     },
     // o Claude Code falando por ela (MCP)
@@ -3107,7 +3121,7 @@ const fill = (into, from) => {
   }
 };
 for (const lang of Object.keys(LINES)) {
-  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini']) {
+  for (const key of ['guard', 'hands', 'daily', 'play', 'emotion', 'progress', 'inbox', 'mic', 'heartState', 'senses', 'camera', 'ear', 'badges', 'life', 'face', 'presence', 'lock', 'converse', 'gesture', 'arrange', 'github', 'watch', 'week', 'tabs', 'games', 'mcp', 'psn', 'spotify', 'notices', 'voice', 'sky', 'lives', 'gemini', 'light', 'memoryCheck', 'update']) {
     LINES[lang][key] = LINES[lang][key] || {};
     fill(LINES[lang][key], LINES.en[key]);
   }
