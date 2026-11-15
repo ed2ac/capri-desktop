@@ -56,7 +56,8 @@ function loadImage(src) {
 
 // close-ups of her for the cut-ins, frames of the show (tools/build-cutins.py)
 const CUTINS = ['grin', 'laugh', 'eyes', 'many', 'look'];
-const WATCH_MS = 2000; // how often she checks the pointer still reaches her
+const WATCH_MS = 2000; // how often she checks which screen the pointer is on
+const POINTER_MS = 300; // how often she checks where the pointer really is (her clicks, when its moves stop reaching her)
 const FOLLOW_AFTER = 2; // checks in a row with the pointer on another screen before she follows it there
 const AWAY_MS = 15 * 60 * 1000; // the pointer still this long: you were away from your PC
 const SNOOZE_MS = 10 * 60 * 1000;
@@ -189,29 +190,54 @@ async function boot() {
     refreshHit();
     hoverChip();
   });
-  // Where the pointer really is, every couple of seconds: if it moved over her window and no
-  // mousemove came, the hook that brings it to her is gone (Windows drops it without a word, after
-  // sleep say), and main.js puts in a new one.
+  // Where the pointer really is, a few times a second. Its moves reach her through a mouse hook,
+  // and Windows drops that hook without a word whenever her main process stalls a moment: no
+  // mousemove comes anymore, and her panel's buttons can't be clicked (the click goes through to
+  // the window behind). So while no moves are coming, the real pointer decides, both ways: on her
+  // or her panel, clickable; anywhere else, click-through. And main.js puts in a new hook.
   let seen = null;
   let rearmedAt = -Infinity;
+  let followedAt = 0;
+  let polling = false;
   let follow = null; // (pointer) => she may follow it to another screen (below)
   setInterval(async () => {
-    const at = await host.cursor().catch(() => null);
-    const before = seen;
-    seen = at;
-    follow?.(at);
-    if (!at?.inside) return;
-    const now = performance.now();
-    // the pointer is on her and she isn't clickable (its moves stopped reaching her): she is now
-    if (!interactive && now - lastMove > WATCH_MS) {
-      mouse = { x: at.x, y: at.y };
-      refreshHit();
+    if (polling) return;
+    polling = true;
+    try {
+      const at = await host.cursor().catch(() => null);
+      const now = performance.now();
+      if (now - followedAt >= WATCH_MS) {
+        followedAt = now;
+        try { follow?.(at); } catch { /* not this time */ }
+      }
+      const before = seen;
+      seen = at;
+      if (!at || capri.dragging) return;
+      // its moves are reaching her: mousemove keeps all this right
+      if (now - lastMove < POINTER_MS * 2) return;
+      if (!at.inside) {
+        if (mouse) {
+          mouse = null;
+          refreshHit();
+          hoverChip();
+        }
+        return;
+      }
+      if (!mouse || mouse.x !== at.x || mouse.y !== at.y) {
+        mouse = { x: at.x, y: at.y };
+        refreshHit();
+        hoverChip();
+      }
+      // it moved over her window and no mousemove came: the hook is gone, a new one
+      const moved = before?.inside && (at.x !== before.x || at.y !== before.y);
+      if (moved && now - rearmedAt > 10000) {
+        rearmedAt = now;
+        host.rearm();
+      }
+    } finally {
+      polling = false;
     }
-    if (!before?.inside || (at.x === before.x && at.y === before.y)) return;
-    if (now - lastMove < WATCH_MS * 1.5 || now - rearmedAt < 20000) return;
-    rearmedAt = now;
-    host.rearm();
-  }, WATCH_MS);
+  }, POINTER_MS);
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (chip.visible && chip.contains(e.clientX, e.clientY, 0)) host.openMenu();
