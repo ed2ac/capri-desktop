@@ -1132,7 +1132,7 @@ function regroupTray(t, items) {
     [t.groupSenses, [t.activity, t.lookAuto, t.senseInput, t.camera, t.pcReact, t.shellReact, t.pwshInstall, t.pwshRemove]],
     [t.groupBehavior, [t.chatty, t.pranks, t.wander, t.possess, t.jealous, t.closePages, t.aiLines, t.callQuiet, t.obsMode, t.rest]],
     [t.groupHealth, [t.breaks, t.eyeBreaks]],
-    [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.watch]],
+    [t.groupAI, [t.chatModel, t.taskModel, t.taskPermission, t.lightMode, t.mcpOn, t.githubWatch, t.watch]],
     [t.groupLooks, [t.size, t.panelSize, t.theme, t.motion, t.display, t.sound, t.screen]],
   ];
   const taken = new Set();
@@ -1176,6 +1176,7 @@ function rebuildTray() {
     ...(heartLabel ? [{ label: heartLabel, enabled: false }] : []),
     { label: t.sync(Math.min(100, Math.floor(xp / 10)), t.stages[stage]), enabled: false },
     { type: 'separator' },
+    { label: t.updateCheck, click: () => manualUpdate(t) },
     { label: t.teleport, click: () => sendCommand('teleport') },
     { label: t.satellite, click: () => sendCommand('satellite') },
     { label: t.demo, click: playDemo },
@@ -1191,8 +1192,18 @@ function rebuildTray() {
     { label: t.corner, click: () => openCorner() },
     { label: (cfg.apiKeys || {}).gemini ? t.geminiOn : t.geminiKey, click: () => sendCommand('geminiKey') },
     { label: t.tabsExt, click: () => installExtension() },
-    { label: t.updateCheck, click: () => manualUpdate(t) },
+    { label: t.lightMode, submenu: ['games', 'claude', 'heavy', 'battery', 'always'].map((k) => ({
+      label: t.lightModes[k], type: 'checkbox', checked: Boolean({ games: true, ...(cfg.lightMode || {}) }[k]),
+      click: (i) => updateConfig({ lightMode: { games: true, ...(config.load().lightMode || {}), [k]: i.checked } }),
+    })) },
+    { label: t.mcpOn, type: 'checkbox', checked: cfg.mcpOn !== false, click: (i) => updateConfig({ mcpOn: i.checked }) },
+    { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
     { label: t.backup, submenu: [
+      { label: cfg.notesDir ? fmtLabel(t.notesOn, path.basename(cfg.notesDir)) : t.notesDir, click: async () => {
+        if (cfg.notesDir) { updateConfig({ notesDir: null }); rebuildTray(); return; }
+        const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.notesDir, properties: ['openDirectory'] });
+        if (!canceled && filePaths[0]) { updateConfig({ notesDir: filePaths[0] }); rebuildTray(); }
+      } },
       { label: t.backupExport, click: async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.backupExport, properties: ['openDirectory', 'createDirectory'] });
         if (canceled || !filePaths[0]) return;
@@ -1223,17 +1234,6 @@ function rebuildTray() {
         })(),
         { type: 'separator' },
         { label: t.openShop, click: () => { fs.mkdirSync(tasks.PROGRAMS, { recursive: true }); shell.openPath(tasks.SHOP); } },
-        { label: cfg.notesDir ? fmtLabel(t.notesOn, path.basename(cfg.notesDir)) : t.notesDir, click: async () => {
-          if (cfg.notesDir) { updateConfig({ notesDir: null }); rebuildTray(); return; }
-          const { canceled, filePaths } = await dialog.showOpenDialog({ title: t.notesDir, properties: ['openDirectory'] });
-          if (!canceled && filePaths[0]) { updateConfig({ notesDir: filePaths[0] }); rebuildTray(); }
-        } },
-        { label: t.lightMode, submenu: ['games', 'claude', 'heavy', 'battery', 'always'].map((k) => ({
-          label: t.lightModes[k], type: 'checkbox', checked: Boolean({ games: true, ...(cfg.lightMode || {}) }[k]),
-          click: (i) => updateConfig({ lightMode: { games: true, ...(config.load().lightMode || {}), [k]: i.checked } }),
-        })) },
-        { label: t.mcpOn, type: 'checkbox', checked: cfg.mcpOn !== false, click: (i) => updateConfig({ mcpOn: i.checked }) },
-        { label: t.githubWatch, type: 'checkbox', checked: cfg.githubWatch !== false, click: (i) => updateConfig({ githubWatch: i.checked }) },
         { label: t.workshopAuto, type: 'checkbox', checked: cfg.workshopAuto !== false, click: (i) => updateConfig({ workshopAuto: i.checked }) },
       ],
     },
