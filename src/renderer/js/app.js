@@ -228,6 +228,8 @@ async function boot() {
     refreshHit();
   };
   capri.onTeleport = (phase) => (phase === 'start' ? panel.suspend() : panel.resume());
+  // her watchdog freed her (capri.js): written down, to find what left her stuck
+  capri.onStuck = (by) => host.debugLog?.(`stuck busy, freed: ${by} | stance ${capri.stance} mode ${capri.mode}`);
   capri.chipAt = () => chip.center();
   capri.onStow = () => {
     chip.setMode(capri.mode);

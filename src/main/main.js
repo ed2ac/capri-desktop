@@ -2023,6 +2023,14 @@ function registerIpc() {
     overlay?.webContents.send('work:start', { prompt: prompt.slice(0, 4000), folder: typeof folder === 'string' && folder.startsWith('/') ? folder : null });
   });
   ipcMain.on('work:open', () => openWorkshop());
+  // something to find later (her watchdog freed her, say): a line in capri-debug.log, in her data
+  ipcMain.on('debug:log', (_e, line) => {
+    try {
+      const file = path.join(app.getPath('userData'), 'capri-debug.log');
+      if (fs.existsSync(file) && fs.statSync(file).size > 512 * 1024) fs.renameSync(file, `${file}.old`);
+      fs.appendFileSync(file, `${new Date().toISOString()} ${String(line).slice(0, 2000)}\n`);
+    } catch { /* nowhere to write */ }
+  });
   ipcMain.on('update:now', () => updater?.downloadUpdate().catch((err) => overlay?.webContents.send('update:error', { error: err.message })));
   // her settings window: an item clicked there, as if in her menu
   ipcMain.on('settings:click', (_e, id) => {

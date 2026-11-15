@@ -44,3 +44,18 @@ test('calendar: a weekday meeting with a cancelled day', () => {
   const { list } = calendar.occurrences(e, new Date(2026, 10, 16).getTime(), new Date(2026, 10, 21));
   assert.deepEqual(list.map((d) => d.getDate()), [16, 18, 19, 20]);
 });
+
+test('stuck busy: her watchdog frees her (a left click and a drag work again)', async () => {
+  const { Capri } = await import(R('capri'));
+  const c = Object.create(Capri.prototype);
+  Object.assign(c, { _busy: false, dragging: false, stance: 'stand', mode: 'idle', stowed: false, dormant: false, p: { alpha: 0, collapse: 1, dissolve: 0.5 }, setStance() {}, holding: () => false });
+  let stuck = null;
+  c.onStuck = (by) => { stuck = by; };
+  c.busy = true;
+  assert.match(c.busyBy, /test/);
+  c.busySince = performance.now() - 60000;
+  try { c.behave(performance.now()); } catch { /* the rest of behave needs a whole Capri */ }
+  assert.equal(c.busy, false);
+  assert.equal(c.p.alpha, 1);
+  assert.ok(stuck !== null);
+});

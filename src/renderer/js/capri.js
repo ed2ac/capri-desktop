@@ -66,7 +66,7 @@ export class Capri {
     this.perch = null;    // { id, dx }: the window she sits on, and where along it
     this.peekSide = null; // left | right | top
     this.windows = { fg: 0, wins: [] };
-    this.busy = false;
+    this._busy = false; // (busy: an accessor below, with where it was set, for her watchdog)
     this.hidden = false;
     this.stowed = false;  // folded away in her biochip (Ctrl+Alt+C)
     this.dormant = false; // asleep, down to her mask
@@ -533,7 +533,31 @@ export class Capri {
     if (cue) this.onCue(cue);
   }
 
+  // busy: something of hers going on (a teleport, a peek…). Where it was set is kept: if it ever
+  // stays on far too long (something forgot to clear it), her watchdog below frees her, or she'd
+  // stop answering a left click or a drag while her menu still works.
+  get busy() { return this._busy; }
+  set busy(on) {
+    this._busy = Boolean(on);
+    if (on) {
+      this.busySince = performance.now();
+      this.busyBy = (new Error().stack || '').split('\n').slice(2, 4).map((l) => l.trim()).join(' < ');
+    }
+  }
+
+  unstick() {
+    const by = this.busyBy;
+    this._busy = false;
+    if (!this.stowed && !this.dormant && this.p.alpha < 0.5) Object.assign(this.p, { alpha: this.mode === 'sleep' ? 0.55 : 1, collapse: 0, dissolve: 0 });
+    if (!['stand', 'sit', 'peek', 'down'].includes(this.stance)) this.setStance('stand');
+    this.walking = false;
+    this.onTeleport?.('end');
+    this.onStuck?.(by);
+  }
+
   behave(now) {
+    // her watchdog: busy far longer than anything of hers takes, and not in your hands: freed
+    if (this._busy && !this.dragging && now - (this.busySince || now) > 45000) this.unstick();
     if (this.stance === 'fall') {
       this.updateFall(now);
       return;

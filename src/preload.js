@@ -103,6 +103,7 @@ contextBridge.exposeInMainWorld('host', {
   visionKey: (k) => ipcRenderer.invoke('vision:key', k),
   localUnload: () => ipcRenderer.invoke('local:unload'),
   openSettings: () => ipcRenderer.send('settings:open'),
+  debugLog: (line) => ipcRenderer.send('debug:log', line),
   onUpdate: on('update:available'),
   onUpdateProgress: on('update:progress'),
   onUpdateError: on('update:error'),
