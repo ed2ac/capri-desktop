@@ -63,7 +63,9 @@ export class Gestures {
   frame(video, face, pose, now = Date.now()) {
     if (!this.on || this.light) return; // light mode (light.js): no gestures
     if (pose) this.onPose(pose, face, now);
-    if (!this.recognizer || now - this.lastAt < EVERY_MS || this.presence?.away) return;
+    // no hand in sight a while: a look now and then; a hand: often (each look costs)
+    const every = now - (this.handAt || 0) > 8000 ? 1200 : EVERY_MS;
+    if (!this.recognizer || now - this.lastAt < every || this.presence?.away) return;
     this.lastAt = now;
     let r;
     try {
@@ -74,6 +76,7 @@ export class Gestures {
     const g = r.gestures?.[0]?.[0];
     const hand = r.landmarks?.[0];
     const name = g && g.score > 0.6 && g.categoryName !== 'None' ? g.categoryName : null;
+    if (hand) this.handAt = now;
     if (hand) {
       this.wrist = [...this.wrist.filter((w) => now - w.t < 1500), { x: hand[0].x, t: now }];
     } else this.wrist = [];

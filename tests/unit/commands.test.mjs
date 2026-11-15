@@ -230,3 +230,14 @@ test('a question of hers that another one replaced: its buttons close it, never 
   panel.onAction('yes');
   assert.equal(await second, 'yes');
 });
+
+test('her plays, asked for by name', () => {
+  chat.onPlayNow = () => {};
+  const a = (t) => ask(t)?.what;
+  assert.equal(a('faz uma travessura'), 'prank');
+  assert.equal(a('bora brincar de esconde-esconde'), 'hide');
+  assert.equal(a('vamos de pega-pega'), 'tag');
+  assert.equal(a('dança pra mim'), 'dance');
+  assert.equal(a('desenha alguma coisa'), 'draw');
+  chat.onPlayNow = null;
+});

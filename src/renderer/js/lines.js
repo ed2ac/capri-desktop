@@ -887,6 +887,7 @@ export const LINES = {
     },
     // pointer play and mischief (play.js)
     play: {
+      onDemand: ['Let’s go! Watch this…', 'Thought you’d never ask.', 'Okay, but no complaining after.'],
       graffiti: ['CAPRI WAS HERE', 'CHOOM', 'PREEM', '<3 CAPRI'],
       reflexInvite: 'Let’s go! Reflex test: when I flash, click me as fast as you can.',
       reflexStart: ['Reflex test! Wait for me to flash, then click me.', 'Ready your finger… wait for the signal.'],
@@ -2175,6 +2176,7 @@ export const LINES = {
     },
     // interações com o mouse e travessuras (play.js)
     play: {
+      onDemand: ['Bora! Olha só…', 'Achei que você nunca ia pedir.', 'Tá, mas depois não reclama.'],
       graffiti: ['CAPRI WAS HERE', 'CAPRI ESTEVE AQUI', 'CHOOM', 'PREEM', '<3 CAPRI'],
       reflexInvite: 'Bora! Teste de reflexo: quando eu piscar, clica em mim o mais rápido que puder.',
       reflexStart: ['Teste de reflexo! Espera eu piscar e clica em mim.', 'Prepara o dedo… espera o sinal.'],

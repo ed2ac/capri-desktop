@@ -146,7 +146,9 @@ export class Hearing {
     const src = this.ctx.createMediaStreamSource(this.stream);
     const proc = this.ctx.createScriptProcessor(4096, 1, 1);
     const rate = this.ctx.sampleRate;
-    let buf = new Float32Array(0);
+    // a second of sound gathered in one buffer, reused (no new one every chunk)
+    const second = new Float32Array(rate);
+    let filled = 0;
     this.blocksPerSecond = rate / BLOCK;
     this.envelope = [];
     this.bg = 0.01;
@@ -154,14 +156,16 @@ export class Hearing {
     proc.onaudioprocess = (e) => {
       const chunk = e.inputBuffer.getChannelData(0);
       this.blocks(chunk);
-      const next = new Float32Array(buf.length + chunk.length);
-      next.set(buf);
-      next.set(chunk, buf.length);
-      buf = next;
-      if (buf.length >= rate) { // a second of sound: what is it?
-        const second = buf.slice(0, rate);
-        buf = buf.slice(rate);
-        this.hear(second, rate);
+      let at = 0;
+      while (at < chunk.length) {
+        const take = Math.min(chunk.length - at, rate - filled);
+        second.set(chunk.subarray(at, at + take), filled);
+        filled += take;
+        at += take;
+        if (filled === rate) { // a second of sound: what is it?
+          filled = 0;
+          if (!this.light) this.hear(second, rate);
+        }
       }
     };
     src.connect(proc);

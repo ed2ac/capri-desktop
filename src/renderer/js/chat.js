@@ -66,6 +66,17 @@ const NOTICES_ASK = /(?:o\s+que|quais|alguma?)\s+(?:chegou|chegaram|tem|teve)\s+
 const LIVE_ADD = /(?:me\s+)?avis[ae]\w*\s+quando\s+(?:o\s+|a\s+)?@?([\w.-]{2,40})\s+(?:entrar|ficar|estiver|for)\s+(?:ao\s+vivo|online|em\s+live)(?:\s+n[oa]\s+(twitch|youtube))?|tell\s+me\s+when\s+@?([\w.-]{2,40})\s+goes\s+live(?:\s+on\s+(twitch|youtube))?/i;
 const LIVE_DEL = /(?:para|pare)\s+de\s+me\s+avisar\s+(?:d[oae]s?\s+)?@?([\w.-]{2,40})|stop\s+telling\s+me\s+about\s+@?([\w.-]{2,40})/i;
 
+// her plays, asked for by name ("faz uma travessura", "vamos de esconde-esconde", "dança pra mim")
+const PLAY_NOW = [
+  ['prank', /(?:faz|faça|apronta)\w*\s+(?:uma\s+)?(?:travessura|pegadinha|arte)|do\s+a\s+prank|prank\s+me/i],
+  ['hide', /esconde[- ]esconde|hide\s+and\s+seek/i],
+  ['tag', /pega[- ]pega|\btag\b.*game|play\s+tag/i],
+  ['reflex', /(?:jogo|teste)\s+de\s+reflexo|reflex\s+(?:game|test)/i],
+  ['dance', /dan[çc]a\s+(?:pra|para)\s+mim|dance\s+for\s+me|bora\s+dan[çc]ar/i],
+  ['draw', /(?:desenha|faz\s+um\s+desenho)\s+(?:alguma\s+coisa|algo|pra\s+mim|qualquer)|draw\s+(?:something|me\s+something)/i],
+  ['juggle', /faz\s+malabares?|juggle/i],
+];
+
 // her corner: "mostra seus desenhos", "abre seu diário"
 const CORNER_ASK = /(?:mostr|abr|v[êe]r|quero\s+ver)\w*\s+(?:os\s+)?(?:seus|teus)\s+(?:desenhos|di[áa]rio|conquistas)|(?:show|open)\s+(?:me\s+)?your\s+(?:drawings|diary|achievements)/i;
 
@@ -723,6 +734,8 @@ export class Chat {
     if (this.gestures && RPS_ASK.test(text)) return { kind: 'rps' };
     if (this.activity && WEEK_ASK.test(text)) return { kind: 'week' };
     if (CORNER_ASK.test(text)) return { kind: 'corner' };
+    const playNow = this.onPlayNow && PLAY_NOW.find(([, re]) => re.test(text))?.[0];
+    if (playNow) return { kind: 'playNow', what: playNow };
     const liveAdd = LIVE_ADD.exec(text);
     if (liveAdd) return { kind: 'live', op: 'add', name: liveAdd[1] || liveAdd[3], site: (liveAdd[2] || liveAdd[4] || 'twitch').toLowerCase() };
     const liveDel = LIVE_DEL.exec(text);
@@ -958,6 +971,10 @@ export class Chat {
     if (asked.kind === 'arrange') return this.arrange(asked);
     if (asked.kind === 'week') return this.week();
     if (asked.kind === 'tabs') return this.tabs(asked);
+    if (asked.kind === 'playNow') {
+      setTimeout(() => this.onPlayNow(asked.what), 1500); // her line first, then the chat makes room
+      return { line: pick(this.brain.t.play?.onDemand || ['…']), face: 'smug' };
+    }
     if (asked.kind === 'live') {
       const l = this.brain.t.lives;
       const r = await this.host.livesSet?.({ op: asked.op, site: asked.site, name: asked.name }).catch(() => null);

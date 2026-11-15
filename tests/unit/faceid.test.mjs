@@ -19,7 +19,7 @@ async function world() {
   f.known = { owner: { d: face(0) }, guests: [] };
   let next = [];
   f.readings = async () => next;
-  const see = async (...faces) => { next = faces; await f.tick(); };
+  const see = async (...faces) => { next = faces; if (faces.length) camera.lastFaceAt = Date.now(); await f.tick(); };
   return { f, camera, said, see };
 }
 const good = (off, at) => ({ d: face(off, at), score: 0.95, width: 140 });

@@ -106,7 +106,7 @@ export class Camera {
     // your hands too (gestures.js), with the same vision files
     if (this.Vision && this.gestures?.on) this.gestures.load(this.files, this.Vision);
     clearInterval(this.loop);
-    this.loop = setInterval(() => this.frame(), this.rate || 250);
+    this.loop = setInterval(() => this.frame(), this.rate || 350);
   }
 
   // how often she looks (presence.js): 4 times a second, or a glance every few seconds while you're away
@@ -114,7 +114,7 @@ export class Camera {
     this.rate = ms || null;
     if (!this.loop) return;
     clearInterval(this.loop);
-    this.loop = setInterval(() => this.frame(), this.rate || 250);
+    this.loop = setInterval(() => this.frame(), this.rate || 350);
   }
 
   stop({ keep = false } = {}) {

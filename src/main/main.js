@@ -1188,6 +1188,9 @@ function rebuildTray() {
       label: `${t.achievements} (${cfg.achievements.length})`,
       submenu: cfg.achievements.map((a) => ({ label: `★ ${a.name}`, enabled: false })),
     }] : []),
+    { label: t.playMenu, submenu: ['rps', 'hangman', 'number', 'quiz', 'hide', 'tag', 'reflex', 'prank', 'portrait', 'draw', 'dance', 'juggle', 'sneak'].map((what) => ({
+      label: t.plays[what], click: () => sendCommand('playNow', { what }),
+    })) },
     { label: t.workshop, click: () => openWorkshop() },
     { label: t.corner, click: () => openCorner() },
     { label: (cfg.apiKeys || {}).gemini ? t.geminiOn : t.geminiKey, click: () => sendCommand('geminiKey') },

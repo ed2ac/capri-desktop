@@ -248,6 +248,11 @@ export class FaceId {
   async tick() {
     if (!this.camera.on || !this.camera.stream || !this.known?.owner || this.busy) return;
     if (this.light && (this.lightTicks = (this.lightTicks || 0) + 1) % 4) return; // light mode: a look every 12 s
+    // nothing to recognize: the camera's own face finder (camera.js, far lighter) sees no face, and
+    // whoever was there is already known gone
+    if (Date.now() - (this.camera.lastFaceAt || 0) > 5000 && this.state === 'none') return;
+    // you, settled in front of it a while: a look every 12 s is enough (each look stalls the graphics card a moment)
+    if (this.state === 'owner' && Date.now() - this.since > 60000 && (this.calmTicks = (this.calmTicks || 0) + 1) % 4) return;
     this.busy = true;
     try {
       const faces = await this.readings().catch(() => null);

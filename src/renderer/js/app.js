@@ -927,6 +927,40 @@ async function boot() {
   };
   setTimeout(() => sitesDay().catch(() => {}), 3 * 60000);
   setInterval(() => sitesDay().catch(() => {}), 60 * 60000);
+  // her games and plays, right now: from her menu (Play) or her chat ("faz uma travessura")
+  const playNow = async (what) => {
+    if (chat.open) { panel.hide(); chat.close(); await new Promise((r) => setTimeout(r, 600)); }
+    capri.wake();
+    if (capri.stance === 'peek') await capri.unpeek?.();
+    const words = { hangman: 'vamos jogar forca', number: 'adivinha o número', quiz: 'quiz' };
+    if (words[what]) { // in her chat
+      await chat.start();
+      setTimeout(() => chat.open && chat.send(words[what]), 500);
+      return;
+    }
+    if (what === 'rps' || what === 'portrait') {
+      const r = await chat.bodyGame(what);
+      if (r?.line) panel.say({ kind: 'info', face: r.face || 'smug', line: r.line, hold: 4000 });
+      return;
+    }
+    if (what === 'draw') { life.drewAt = 0; return life.draw(); }
+    if (what === 'dance') { daily.danceAt = 0; return daily.dance(); }
+    if (what === 'prank') {
+      play.prankAt = 0;
+      const did = await play.prank({ provoked: false });
+      if (!did) play.graffiti(); // something always happens when you ask
+      return undefined;
+    }
+    if (what === 'graffiti') return play.graffiti();
+    if (what === 'hide') return play.hideAndSeek();
+    if (what === 'tag') return play.tag();
+    if (what === 'reflex') return play.reflex();
+    if (what === 'sneak') { play.mouse = play.mouse || capri.mouse; return life.sneak(); }
+    if (what === 'juggle') return life.juggle();
+    if (what === 'workout') return life.workout();
+    return undefined;
+  };
+  chat.onPlayNow = playNow;
   // a reminder tied to an app you just brought up (main.js)
   host.onCtxRemind?.(({ app, text }) => {
     capri.wake();
@@ -1280,6 +1314,11 @@ async function boot() {
           await new Promise((res) => setTimeout(res, 2500));
         }
       });
+      return;
+    }
+    // her games and plays, on demand (her menu › Play, or asked in her chat)
+    if (cmd.name === 'playNow') {
+      playNow(cmd.what);
       return;
     }
     // her browser extension got new files: one click in the browser to load them
