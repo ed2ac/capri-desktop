@@ -1530,6 +1530,7 @@ export class Capri {
 
   // Lean in from an edge of the screen: vanish, then slide in on twos, three drawings.
   async peek(side = pick(['left', 'right', 'top'])) {
+    if (this.holding?.()) return; // never hiding with a question of hers on screen (it'd go with her)
     if (this.busy) return;
     const s = this.scale;
     const { w, h } = this.view;
