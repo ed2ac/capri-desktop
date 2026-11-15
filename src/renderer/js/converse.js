@@ -15,6 +15,11 @@ const SILENCE_MS = 1300;   // you stopped talking
 const MAX_MS = 15000;
 const QUIET = 0.02;        // RMS under this: silence
 // what Whisper "hears" in silence or noise, in Portuguese and English (YouTube captions it learned from)
+// Only what's said to HER counts: her name somewhere in it ("mas aí não pode, Capri"), the whole of
+// it kept (what came before her name too). Anything else (you talking to someone, the TV, a noise
+// Whisper made words of) isn't an answer. As Whisper may spell her name.
+const NAME = /(?<![\p{L}])(?:capri|kapri|capry|kapry|cápri|caprí|capre|capr[ií]e|kapre)(?![\p{L}])/iu;
+export const addressed = (text) => NAME.test(String(text || ''));
 const PHANTOM = /^(obrigad[oa]\.?|tchau\.?|legenda[s]?.*|.*amara\.org.*|inscreva-se.*|thank you\.?|thanks for watching.*|you\.?|bye\.?|\.+|…)$/i;
 
 export class Converse {
@@ -111,7 +116,7 @@ export class Converse {
     const res = await this.host.transcribe(audio, this.brain.lang).catch(() => null);
     if (res?.error === 'nokey') this.noKey = true;
     const text = String(res?.text || '').trim();
-    if (!text || PHANTOM.test(text)) return this.unanswered(question);
+    if (!text || PHANTOM.test(text) || !addressed(text)) return this.unanswered(question);
     return this.answered(question, text);
   }
 
@@ -136,7 +141,8 @@ export class Converse {
   // her answer in a talk you started by voice: if it asks you something, she listens again
   onAnswer(answer) {
     if (!this.talking) return;
-    if (/\?["”»)]?\s*$/.test(String(answer).trim())) setTimeout(() => this.listen(answer), 600);
+    // a talk out loud: after each answer of hers, a few seconds of listening (her name still needed)
+    setTimeout(() => this.listen(answer), 600);
   }
 
   onClose() {

@@ -20,7 +20,14 @@ export class Guide {
     this.setup = null;  // setup.js: getting her chat going, and the free way to run Claude Code
     this.onTalk = null; // () => void: "Talk to me" picked in her menu (app.js opens her chat)
     this.custom = null; // custom.js: what she calls you, how she is, your lines
-    panel.onAction = (id) => this.answer(id);
+    // a button of hers clicked: the question waiting for it gets it; a question already over (another
+    // came and took its place, but its panel stayed): the panel goes, never a button that does nothing
+    panel.onAction = (id) => {
+      if (this.waiting && this.panel.current?.token === this.waiting.token) return this.answer(id);
+      this.answer(null);
+      this.panel.hide();
+      return undefined;
+    };
     panel.onDismiss = (msg) => {
       if (this.waiting && msg.token === this.waiting.token) this.answer(null);
     };
@@ -104,6 +111,8 @@ export class Guide {
         capri.nextMove = performance.now() + 30000;
         capri.nextGaze = performance.now() + 60000;
         if (this.panel.current?.token) this.panel.hide();
+      } else if (this.panel.current?.token && !this.waiting) {
+        this.panel.hide(); // a newer scene took over, and asked nothing yet: this one's question can't stay up
       }
     }
   }

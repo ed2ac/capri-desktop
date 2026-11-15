@@ -34,13 +34,19 @@ test('what Whisper makes up out of silence isn\'t an answer', () => {
   for (const t of ['Tô sim, tá linda hoje', 'Não, tá nublado']) assert.doesNotMatch(t, CONVERSE_PHANTOM, t);
 });
 
-test('a talk out loud goes on: her answer asking again is listened for', async () => {
+test('a talk out loud goes on: after each answer of hers, she listens again', async () => {
   const { c, heard } = world();
-  c.onAnswer('Que legal! E você gosta de olhar o céu?');
+  c.onAnswer('Que legal!');
   await new Promise((r) => { setTimeout(r, 700).ref?.(); });
   assert.equal(heard.length, 0); // not a talk out loud yet
   c.talking = true;
-  c.onAnswer('Que legal! E você gosta de olhar o céu?');
+  c.onAnswer('Que legal!');
   await new Promise((r) => { setTimeout(r, 700).ref?.(); });
   assert.equal(heard.length, 1);
+});
+
+test('only what is said to her counts: her name somewhere in it, the whole of it kept', async () => {
+  const { addressed } = await import(R('converse'));
+  for (const t of ['mas aí não pode Capri', 'Capri, tô vendo sim', 'tô sim, capri, tá linda hoje', 'Kapri, não sei']) assert.equal(addressed(t), true, t);
+  for (const t of ['mas aí não pode', 'liga a TV aí', 'capricho demais', 'o Capriotti chegou']) assert.equal(addressed(t), false, t);
 });

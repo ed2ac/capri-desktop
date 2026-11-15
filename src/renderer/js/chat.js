@@ -435,7 +435,7 @@ export class Chat {
     clearTimeout(this.idleTimer);
     const last = this.history.at(-1);
     const len = last?.role === 'assistant' ? String(last.content).length : 0;
-    const wait = ms ?? Math.max(30000, Math.min(120000, 30000 + len * 70));
+    const wait = ms ?? Math.max(20000, Math.min(60000, 15000 + len * 50));
     this.idleTimer = setTimeout(() => this.idleClose(), wait);
   }
 

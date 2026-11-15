@@ -5,11 +5,11 @@ import { clamp, ease, reducedMotion, tidy } from './util.js';
 const NOISE = '▚▞▙▟░▒#%&/\\<>01XZ';
 
 // How long a line of hers stays: long enough to read it (its text decodes in first), no longer.
-// About 15 characters a second, plus a moment to look; at least 3 s, at most 16 s. Something that
+// About 12 characters a second, plus a moment to look; at least 3.5 s, at most 25 s. Something that
 // matters (an alert, a reminder, her buttons) keeps at least the time it asked for.
 export function readingTime(msg) {
   const chars = String(msg.line || '').length + Math.round(String(msg.quote || '').length * 0.6);
-  const read = Math.max(3000, Math.min(16000, 1600 + chars * 65));
+  const read = Math.max(3500, Math.min(25000, 2500 + chars * 80));
   const important = ['alert', 'remind', 'error'].includes(msg.kind) || msg.actions?.length;
   return important ? Math.max(read, msg.hold) : read;
 }

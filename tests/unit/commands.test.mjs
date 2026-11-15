@@ -161,7 +161,7 @@ test('her chat closes by itself after a while, never while you type, talk or she
   globalThis.setTimeout = (fn, ms) => { waited = ms; return real(() => {}, 0); };
   c.idle();
   globalThis.setTimeout = real;
-  assert.equal(waited, 72000);
+  assert.equal(waited, 45000);
   void at;
 });
 
@@ -199,10 +199,10 @@ test('streamers going live, asked in words', () => {
 
 test('her lines stay as long as it takes to read them', async () => {
   const { readingTime } = await import(R('panel'));
-  assert.equal(readingTime({ kind: 'info', line: 'Oi!', hold: 9000 }), 3000); // short: short
+  assert.equal(readingTime({ kind: 'info', line: 'Oi!', hold: 9000 }), 3500); // short: short
   const long = readingTime({ kind: 'info', line: 'x'.repeat(160), hold: 4000 });
-  assert.ok(long > 11000 && long < 13000, String(long)); // long: longer than it asked
-  assert.equal(readingTime({ kind: 'info', line: 'x'.repeat(2000), hold: 4000 }), 16000); // never too long
+  assert.ok(long > 14000 && long < 16500, String(long)); // long: longer than it asked
+  assert.equal(readingTime({ kind: 'info', line: 'x'.repeat(2000), hold: 4000 }), 25000); // never too long
   assert.equal(readingTime({ kind: 'alert', line: 'Oi!', hold: 9000 }), 9000); // what matters keeps its time
 });
 
@@ -212,4 +212,21 @@ test('new PS5 trophies between two looks', async () => {
   const before = { a: { name: 'Astro Bot', bronze: 10, silver: 2, gold: 1, platinum: 0, progress: 80 } };
   const now = { a: { name: 'Astro Bot', bronze: 12, silver: 2, gold: 1, platinum: 1, progress: 100 }, b: { name: 'Novo', bronze: 5, silver: 0, gold: 0, platinum: 0 } };
   assert.deepEqual(newTrophies(before, now).map((t) => `${t.kind}:${t.count}`), ['platinum:1', 'bronze:2']);
+});
+
+test('a question of hers that another one replaced: its buttons close it, never do nothing', async () => {
+  const { Guide } = await import(R('guide'));
+  let hidden = 0;
+  const panel = { current: null, say(m) { this.current = m; return true; }, hide() { hidden++; this.current = null; } };
+  const g = new Guide({ capri: { stopPointing() {}, wake() {} }, panel, voice: {}, host: {}, brain: { t: {} } });
+  const first = g.ask({ line: 'Acertei?', actions: [{ id: 'right' }] });
+  const stale = panel.current;
+  g.answer(null); // another question took over (its own panel refused): the first is over
+  assert.equal(await first, null);
+  panel.current = stale; // ...but its panel is still up
+  panel.onAction('right');
+  assert.equal(hidden, 1);
+  const second = g.ask({ line: 'Outra?', actions: [{ id: 'yes' }] });
+  panel.onAction('yes');
+  assert.equal(await second, 'yes');
 });
