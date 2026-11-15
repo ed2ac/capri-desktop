@@ -1602,7 +1602,7 @@ export class Capri {
     this.busy = false;
     const side = this.peekSide;
     this.setStance('stand');
-    if (shy && Math.random() < 0.6) {
+    if (shy && Math.random() < 0.6 && !this.holding?.()) { // (not while a question of hers is up: she comes back out instead)
       this.peek(pick(['left', 'right', 'top'].filter((x) => x !== side)));
       return;
     }

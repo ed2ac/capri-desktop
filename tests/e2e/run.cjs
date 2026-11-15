@@ -85,6 +85,7 @@ async function main() {
   // the modal bug: a question of hers must stay where it is (she doesn't walk off with it) and close on a click
   await check('a question of hers stays put, and closes on a click', `
     d.panel.hide(); await sleep(3000); // a line left over from the check before would outrank her question
+    for (let i = 0; i < 30 && (d.capri.busy || d.panel.suspended); i++) await sleep(250); // mid-teleport: her panel waits for her to land
     const before = { asking: d.mic.asking, rec: Boolean(d.mic.rec), guide: d.guide.running, waiting: Boolean(d.guide.waiting), cur: d.panel.current && { kind: d.panel.current.kind, line: String(d.panel.current.line || '').slice(0, 40), guide: d.panel.current.guide, chat: Boolean(d.panel.current.chat) }, visible: d.panel.visible, chatOpen: d.chat.open };
     const says = []; const say0 = d.panel.say.bind(d.panel); d.panel.say = (x) => { const r = say0(x); says.push((x.kind) + ':' + r + ':' + String(x.line).slice(0, 30)); return r; };
     d.capri.setMode('idle'); d.capri.busy = false; d.mic.asked = false;
