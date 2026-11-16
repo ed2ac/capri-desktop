@@ -6,7 +6,7 @@
 // her AI, in character. Her chat remembers what she said, for a while.
 
 import { fmt, rand, inLang } from './util.js';
-import { clean, mood } from './chat.js';
+import { clean, mood, spontaneous } from './chat.js';
 
 const FIRST_AFTER = 30 * 1000;     // turned on: her first look soon
 // no clock: she looks when you've settled on another window, or when she feels like it (more when
@@ -148,7 +148,7 @@ export class Look {
       this.lastFg = this.capri.windows.fg;
       this.lastAt = Date.now();
       this.effect();
-      const res = await this.host.lookSay({ id: snap.id, persona: this.chat.lookPersona(), prompt: `${this.chat.languageNote()}\n${PROMPT}\n${this.chat.languageNote()}` });
+      const res = await this.host.lookSay({ id: snap.id, persona: this.chat.lookPersona(), prompt: `${this.chat.languageNote()}\n${PROMPT}\n${spontaneous()}\n${this.chat.languageNote()}` });
       if (res.ok && !inLang(res.text, this.brain.lang)) return; // slipped into English: she keeps it to herself
       if (!res.ok) {
         if (res.code === 'novision') {
@@ -160,7 +160,8 @@ export class Look {
         }
         return;
       }
-      const text = clean(res.text).replace(/^["“«]\s*|\s*["”»]$/g, ''); // no quotes around what she says
+      // one idea, nothing like what she said lately (else she keeps it to herself, unless you asked)
+      const text = this.chat.fresh(res.text) || (manual ? clean(res.text) : null);
       if (!text) return;
       this.chat.seen = { text, at: Date.now() };
       this.panel.say({ kind: 'info', badge: this.brain.t.badges?.scan || 'SCAN', face: mood(text), line: text, hold: Math.min(13000, Math.max(5000, 2500 + text.length * 55)) });

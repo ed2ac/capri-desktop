@@ -1230,6 +1230,7 @@ export const LINES = {
       enrollDone: 'Done, {name}. Now I’ll know you anywhere.', enrollFail: 'I couldn’t see your face well. Try with more light, facing the camera.',
       guest: ['Hi! You must be {who}. Nice to meet you, I’m Capri.', 'Hello! You’re {who}, right? Make yourself at home, I just live here.'],
       stranger: ['Hey… who are you? Where’s {owner}?', 'Hm. I don’t know you. Does {owner} know you’re here?'],
+      whoAreYou: ['So… who are you? A friend of {owner}’s, family? You can tell me, I don’t bite.', 'Nice to meet you, I’m Capri, I live on {owner}’s PC. And you are?'],
       ownerBack: ['You’re back, {name}! I was getting suspicious.', 'Oh, it’s you again. Phew.'],
       ownerFallback: 'my human',
       introduced: 'Nice to meet you, {name}! Now I’ll recognize you.', introNone: 'I don’t see anyone new on the camera right now.',
@@ -1816,7 +1817,7 @@ export const LINES = {
     hello: [
       'Conexão estabelecida. E aí, choom.',
       'Construto Capricórnio online. No que a gente vai trabalhar?',
-      'Todas as minhas eus acordaram. De olho em {project}.',
+      'Todos os meus eus acordaram. De olho em {project}.',
       'Biochip quentinho. Tô aqui.',
     ],
     resume: ['De volta ao {project}. Não esqueci nada.', 'Sessão retomada. Continuando de onde paramos.'],
@@ -1840,7 +1841,7 @@ export const LINES = {
     ],
     permission: ['Ei! O Claude precisa da sua permissão.', 'Choom, você precisa aprovar uma coisa.', 'Esperando seu sinal verde.'],
     waiting: ['O Claude tá esperando sua resposta.', 'Sua vez, choom.'],
-    error: ['Ai. {tool} travou.', '{tool} deu flatline. O Claude vai tentar de novo.', 'Erro em {tool}. Nada grave… eu acho.'],
+    error: ['Ai. {tool} travou.', '{tool} deu flatline. O Claude vai tentar de novo.', 'Deu erro: {tool}. Nada grave… eu acho.'],
     interrupted: ['Interrompido. Mudança de planos?', 'Cortado na hora. Fico aqui.'],
     crashed: ['O Claude parou no meio do voo.', 'Pane feia. O Claude não conseguiu terminar.'],
     subagentStart: ['Subagente {agent} enviado.'],
@@ -1973,7 +1974,7 @@ export const LINES = {
         netIsp: 'Seu roteador responde, mas a internet não passa: reinicia ele. Se continuar, é com a sua operadora.',
         netDnsFixed: 'Era o DNS: limpei, voltou a funcionar.',
         netDns: 'A internet passa, mas os nomes dos sites não respondem (o DNS): reinicia o roteador.',
-        netPortal: 'Você precisa entrar na página do Wi-Fi (hotel, estação, escola…).', netPortalOpen: 'Abrir a página',
+        netPortal: 'Você precisa entrar na página do Wi-Fi (hotel, aeroporto, escola…).', netPortalOpen: 'Abrir a página',
         netOk: 'Sua internet funciona: o site deve estar fora do ar.',
       },
     },
@@ -1993,7 +1994,7 @@ export const LINES = {
     // Claude calado no meio da tarefa: está pensando (o ticker conta os segundos)
     thinking: {
       verb: 'Pensando',
-      hmm: ['Momento cérebro gigante.', 'O Claude está pensando. Eu também.', 'Ainda pensando. Não travou, prometo.'],
+      hmm: ['Momento de gênio, segura aí.', 'O Claude está pensando. Eu também.', 'Ainda pensando. Não travou, prometo.'],
       long: ['Essa está demorando.', 'Pensamento longo. O Claude está mastigando algo grande.'],
       longHow: 'Nada travou: estou contando. Com um modelo local (Ollama), pode levar minutos.',
     },
@@ -2018,7 +2019,7 @@ export const LINES = {
       topics: { connect: 'Me conectar ao Claude', icon: 'Cadê meu ícone?', claude: 'Cadê o Claude?', folder: 'A pasta do Claude', talk: 'Falar comigo', custom: 'Me personalizar', close: 'Nada, valeu' },
       icon: {
         line: 'Meu ícone está ali, perto do relógio.',
-        quote: 'Clica nele: meu menu. Clique direito em mim dá no mesmo.',
+        quote: 'Clica nele: meu menu. Botão direito em mim dá no mesmo.',
         hidden: 'O Windows costuma escondê-lo atrás do ^ perto do relógio: clica ali, eu estou dentro. Ou clique direito em mim: é o mesmo menu.',
       },
       claude: {
@@ -2128,7 +2129,7 @@ export const LINES = {
     // jogada com o ponteiro (capri.js throwHer): o que ela diz quando volta a si
     thrown: {
       fun: ['De novo! De novo!', 'Uau. Bora de novo?', 'Todas as minhas vozes gritaram juntas. De novo.'],
-      ow: ['Ai. Você sabe que eu sou frágil?', 'Tá… vi o satélite de perto.', 'Ei! Não se joga uma construct.'],
+      ow: ['Ai. Você sabe que eu sou frágil?', 'Tá… vi o satélite de perto.', 'Ei! Não se joga um construto.'],
       again: ['De novo? Sério?', 'Minha cabeça tá girando. Todas as minhas cabeças, na verdade.', 'Uma vez foi engraçado.'],
       angry: ['Chega. Nem encosta.', 'Quer brincar? Então vamos.', 'Nunca mais. Bom… não agora.'],
       dodge: ['Nem encosta.', 'Não.', 'Tenta de novo pra ver.'],
@@ -2164,7 +2165,7 @@ export const LINES = {
         controller: ['Controle desconectado. Fim de jogo?'],
         device: ['{name}, desconectado.'],
       },
-      game: ['{game}? Vou te deixar jogar. Me dá orgulho.', '{game}, é? Vou sair da frente. Mostra pra eles.'],
+      game: ['{game}? Vou te deixar jogar. Me deixa orgulhosa.', '{game}, é? Vou sair da frente. Mostra pra eles.'],
       gameBack: ['E aí, ganhou?', 'Acabou de jogar? Me conta tudo.'],
     },
     // ela olha sua tela (look.js): o que ela te diz antes, e quando não dá certo
@@ -2201,7 +2202,7 @@ export const LINES = {
       found: ['Achou! Como você sempre me acha?', 'Ahh, me achou. De novo!'],
       hideGiveUp: ['Você nem procurou, né? Saí.', 'Desisti de esperar. Tô aqui.'],
       tagStart: ['Pega-pega! Duvido você me pegar.', 'Tenta me pegar, choom!'],
-      caught: ['Me pegou! Tá bom, tá bom.', 'Pega! Você é rápido.'],
+      caught: ['Me pegou! Tá bom, tá bom.', 'Tá comigo! Rapidinho, hein.'],
       tagWin: ['Rápida demais pra você.', 'Ninguém pega um construto.'],
       shoo: ['Ei! Tô indo, tô indo.', 'Que grosseria. Saindo.', 'Tá, entendi. Espaço pessoal.'],
       shooMad: ['Me enxotou de novo? Anotado, choom.', 'Beleza. Vou lembrar disso.', 'Vai se arrepender, viu?'],
@@ -2231,7 +2232,7 @@ export const LINES = {
         battery: 'Sua bateria tá com {health}% da capacidade original. Ela tá cansando.',
       },
       openSecurity: 'Abrir a Segurança do Windows', later: 'Depois', opened: 'Abri a Segurança do Windows pra você.',
-      quickScan: 'Verificação rápida', keep: 'Fui eu', disable: 'Desativa',
+      quickScan: 'Verificação rápida', keep: 'Fui eu', disable: 'Desativar',
       checkupGood: 'Checkup feito: tudo em ordem. Seu PC tá blindado, choom.',
       checkupIssues: 'Checkup feito: {count} coisa(s) pra olhar.',
       factDefender: 'Defender ligado (definições de {days} dia(s))', factDefenderOff: 'Defender desligado',
@@ -2422,17 +2423,17 @@ export const LINES = {
     // as atualizações dela (main updatesStart)
     update: { ask: 'Tem uma versão nova minha ({version}). Atualizo agora? Volto em um minutinho.', yes: 'Atualizar', later: 'Depois', downloading: 'Baixando meu upgrade… eu reinicio sozinha.', failed: 'Minha atualização não deu certo: {error}' },
     // conferindo o que ela aprendeu (memory.js)
-    memoryCheck: { ask: ['Tenho reparado uma coisa: {what}. Acertei?', 'Me corrige se eu tiver errada: {what}?'], games: 'você tá viciado em {x}', music: 'você ouve muito {x}', freeTime: 'você passa o tempo livre no {x}', right: 'Acertou', wrong: 'Errou', soso: 'Mais ou menos', after_right: 'Eu sabia. Tô prestando atenção, viu?', after_wrong: 'Ops. Esquecido.', after_soso: 'Tá, vou guardar, mas sem muita certeza.' },
+    memoryCheck: { ask: ['Tenho reparado uma coisa: {what}. Acertei?', 'Me corrige se eu estiver errada: {what}?'], games: 'você tá viciado em {x}', music: 'você ouve muito {x}', freeTime: 'você passa o tempo livre no {x}', right: 'Acertou', wrong: 'Errou', soso: 'Mais ou menos', after_right: 'Eu sabia. Tô prestando atenção, viu?', after_wrong: 'Ops. Esquecido.', after_soso: 'Tá, vou guardar, mas sem muita certeza.' },
     // modo leve (light.js)
     light: { claude: 'O Claude tá trabalhando pesado: vou ficar quietinha e leve pra não atrapalhar.', heavy: 'Seu PC tá suando: modo leve pra mim até ele acalmar.', battery: 'Na bateria: vou pegar leve pra economizar.', always: 'Modo leve ligado: fico quietinha e leve pro seu PC.' },
     // a chave do Gemini pra câmera (main vision:key)
     gemini: { ask: 'Cola sua chave do Gemini (só pra minha câmera; meu chat continua como tá):', placeholder: 'Sua chave do Gemini', save: 'Salvar', page: 'Pegar uma chave grátis', how: 'Google AI Studio (botão) › Create API key. É grátis. Com ela só as imagens da câmera vão pro Google; sua tela continua no seu PC.', ok: 'Pronto: minha câmera agora enxerga pelo {model}. Olhos bem melhores.', badFormat: 'Isso não parece uma chave (sem espaços, com pelo menos 20 caracteres). Copia de novo?', rejected: 'O Google não aceitou essa chave. Copia de novo?' },
     // lives (main lives.js)
-    lives: { added: 'Combinado: quando o {name} entrar ao vivo na {site}, eu te aviso.', addedLive: 'Aliás, o {name} tá ao vivo na {site} agora! E nas próximas eu aviso.', removed: 'Beleza, não aviso mais do {name}.', notWatching: 'Eu nem tava de olho no {name}.', failed: 'Não consegui. Me fala o nome do jeito que tá no canal?', live: 'O {name} entrou ao vivo na {site}!', watch: 'Assistir', later: 'Depois' },
+    lives: { added: 'Combinado: quando o {name} começar uma live ({site}), eu te aviso.', addedLive: 'Aliás, o {name} tá em live agora ({site})! E nas próximas eu aviso.', removed: 'Beleza, não aviso mais do {name}.', notWatching: 'Eu nem tava de olho no {name}.', failed: 'Não consegui. Me fala o nome do jeito que tá no canal?', live: 'O {name} entrou ao vivo na {site}!', watch: 'Assistir', later: 'Depois' },
     // o céu (main daily.js, Open-Meteo)
     sky: { rainSoon: 'Vai chover daqui a umas {hours} h ({rain}%). Se for sair, leva guarda-chuva.', air: 'O ar lá fora tá ruim hoje (IQA {aqi}). Melhor deixar a janela fechada.', stars: 'Céu limpinho hoje… dá pra ver as estrelas. Vai lá olhar por mim?', sunset: 'Pôr do sol agora. Dá uma olhada pela janela, rapidinho.' },
     // a voz offline dela (src/whisper)
-    voice: { downloading: 'Baixando meus ouvidos offline (Whisper, uns 250 MB). É uma vez só.', loading: 'Baixei. Aquecendo os ouvidos…', ready: 'Voz offline pronta: daqui pra frente sua voz não sai deste PC.', off: 'Voltei a usar a Groq pra sua voz.', failed: 'Minha voz offline não funcionou: {error}' },
+    voice: { downloading: 'Baixando meus ouvidos offline (Whisper, uns 250 MB). É uma vez só.', loading: 'Baixei. Aquecendo os ouvidos…', ready: 'Voz offline pronta: daqui pra frente sua voz não sai deste PC.', off: 'Voltei a usar o Groq pra sua voz.', failed: 'Minha voz offline não funcionou: {error}' },
     // suas notificações do Windows (main notices.js)
     notices: { away: '{app}: “{title}”.', urgent: 'Isso parece urgente, no {app}: “{title}”.', duringFocus: 'Chegaram {count} notificação(ões) enquanto você focava: {list}.', part: '{count} no {app} ({who})', none: 'Nada de novo nas últimas horas (ou o “Ler minhas notificações” tá desligado).', summary: '{count} notificação(ões) nas últimas horas: {list}.' },
     // seu Spotify (main spotify.js)
@@ -2502,7 +2503,7 @@ export const LINES = {
       fist: ['Toca aqui! 👊', 'Bum. Respeito.'], stop: ['Tá, tá, parei.', 'Congelei aqui.'], shh: ['Shh… modo silêncio.'],
       phone: ['Celular de novo? Eu tô aqui, sabia?', 'Esse celular é mais interessante que eu? Ai.'], phoneFocus: ['Modo foco, choom. Larga esse celular.', 'Ei. Celular. Na mesa. Você tá focando.'],
       rpsStart: ['Jokenpô! Mostra a mão pra câmera quando eu disser já.', 'Melhor de três. Mão na frente da câmera!'],
-      rpsCount: ['Pedra…', 'Papel…', 'Tesoura…'], rpsGo: 'JÁ!', rpsNoHand: ['Não vi sua mão! De novo.', 'Mão na frente da câmera, trapaceiro!'],
+      rpsCount: ['Jo…', 'Ken…'], rpsGo: 'PÔ!', rpsNoHand: ['Não vi sua mão! De novo.', 'Mão na frente da câmera, trapaceiro!'],
       rps_win: ['{me} ganha de {you}. Minha!', 'Rá! {me} contra {you}.'], rps_lose: ['{you} ganha de {me}… sorte.', 'Tá, {you} ganhou. Dessa vez.'], rps_draw: ['{you} e {me}. De novo!', 'Igual! Mentes brilhantes.'],
       rpsNames: { rock: 'pedra', paper: 'papel', scissors: 'tesoura' }, rpsYouWon: 'Você ganhou de {you} a {me}. Exijo revanche.', rpsIWon: 'Eu ganhei de {me} a {you}. Óbvio.', rpsTie: 'Empate, {you} a {me}. Na próxima eu te esmago.',
       rpsNoCam: 'Pra isso eu preciso da câmera (Câmera e sons › Usar minha câmera).',
@@ -2532,7 +2533,8 @@ export const LINES = {
       enrollLook: 'Olha pra câmera uns segundos… isso, parado. Tô decorando seu rosto.',
       enrollDone: 'Pronto, {name}. Agora eu te reconheço de qualquer jeito.', enrollFail: 'Não consegui ver seu rosto direito. Tenta com mais luz, de frente pra câmera.',
       guest: ['Oi! Você deve ser {who}. Prazer, eu sou a Capri.', 'Olá! Você é {who}, né? Fica à vontade, eu só moro aqui.'],
-      stranger: ['Ei… quem é você? Cadê o {owner}?', 'Hm. Eu não te conheço. O {owner} sabe que você tá aqui?'],
+      stranger: ['Ei… quem é você? Cadê o {owner}?', 'Hm. Eu não te conheço. O {owner} sabe que você tá aqui?', 'Opa, rosto novo na área. Você não é o {owner}…'],
+      whoAreYou: ['Então… você é quem? Amiga, parente do {owner}? Pode me falar, eu não mordo.', 'Prazer, eu sou a Capri, moro aqui no PC do {owner}. E você, quem é?', 'Tá usando o PC do {owner}, hein. Me conta quem você é que eu te trato direitinho.'],
       ownerBack: ['Voltou, {name}! Já tava estranhando.', 'Ah, é você de novo. Ufa.'],
       ownerFallback: 'meu humano',
       introduced: 'Prazer, {name}! Agora eu te reconheço.', introNone: 'Não tô vendo ninguém novo na câmera agora.',

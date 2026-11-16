@@ -6,6 +6,7 @@
 
 import { fmt, today, inLang } from './util.js';
 import { clean, mood } from './chat.js';
+import { newsTopic } from './news.js';
 
 const MILESTONES = [7, 30, 50, 100, 200, 365, 500, 730, 1000];
 // your calendar, your limits, your birthday, read off her chat (care.js asks)
@@ -148,6 +149,11 @@ export class Daily {
     if (played.length) parts.push(`Yesterday they played ${played.join(' and ')}. You may ask how it went.`);
     if (w && !w.error && w.rainIn) parts.push(`Rain is coming in about ${w.rainIn} h.`);
     if (w && !w.error && w.aqi >= 150) parts.push(`The air outside is bad today (AQI ${w.aqi}).`);
+    // a headline from her cloud about something of theirs (news.js)
+    const items = this.host.cloudNews ? await this.host.cloudNews().catch(() => []) : [];
+    const likes = (this.memory?.ranked() || []).filter((i) => ['games', 'likes', 'music', 'projects', 'freeTime'].includes(i.kind)).slice(0, 30).map((i) => i.label);
+    const topic = newsTopic(items, likes);
+    if (topic) parts.push(`A news headline about ${topic.label}, which they like: "${topic.item.title}" (${topic.item.src}). Mention it in a few words.`);
     parts.push('Three or four short sentences: the most important first. Not a list.');
     this.capri.wake();
     this.capri.perform('hop', this.capri.towardCenter());
@@ -197,7 +203,7 @@ export class Daily {
       const key = `${e.title}|${e.start}`;
       if (e.allDay || left > 6 * 60000 || left < 0 || this.warned.has(key)) continue;
       this.warned.add(key);
-      this.capri.wake();
+      this.capri.wake(true); // an event in a few minutes: worth waking her for
       this.voice.play('remind');
       this.capri.perform('alarm', this.capri.towardCenter());
       this.panel.say({ kind: 'alert', face: 'look', line: fmt(this.t.calSoon, { title: e.title, minutes: Math.max(1, Math.round(left / 60000)) }), quote: e.where || '', hold: 15000 });
@@ -304,6 +310,10 @@ export class Daily {
     const w = await this.host.weather(this.cfg.city, LANGS[this.brain.lang] || 'en').catch(() => null);
     if (!w || w.error) return;
     this.sky = w;
+    // the weather on her mood and energy: a sunny mild day lifts her, rain, cold and heat slow her down
+    const kind = w.temp <= 12 ? 'cold' : w.temp >= 32 ? 'hot' : (w.code >= 51 && w.code <= 82) || w.code >= 95 ? 'rain' : null;
+    const sunny = !kind && w.code <= 1 && w.temp >= 18 && w.temp <= 30;
+    this.heart?.setWeather?.({ kind: kind || (sunny ? 'sunny' : null), temp: w.temp });
     // what's coming, once a day each: rain in a few hours, the air, a clear night
     const today = new Date().toDateString();
     const once = (key) => { if (this.skySaid?.[key] === today) return false; this.skySaid = { ...(this.skySaid || {}), [key]: today }; return true; };
@@ -314,9 +324,7 @@ export class Daily {
       this.capri.gaze?.();
       return this.panel.say({ kind: 'idle', face: 'laugh', line: s.stars, hold: 6000 });
     }
-    const kind = w.temp <= 12 ? 'cold' : w.temp >= 32 ? 'hot' : (w.code >= 51 && w.code <= 82) || w.code >= 95 ? 'rain' : null;
-    // the weather on her mood too: a sunny mild day lifts her, rain and cold slow her down
-    this.heart?.nudge(kind || (w.code <= 1 && w.temp >= 18 && w.temp <= 30 ? 'sunny' : ''));
+    this.heart?.nudge(kind || (sunny ? 'sunny' : ''));
     if (!kind || Math.random() < 0.5) return;
     this.capri.perform(kind === 'cold' ? 'shake' : kind === 'hot' ? 'overheat' : 'huff', this.capri.towardCenter());
     this.panel.say({ kind: 'info', face: kind === 'rain' ? 'aside' : 'wide', line: fmt(this.brain.line(`daily.weather_${kind}`), { temp: w.temp, city: w.city }), hold: 5000 });

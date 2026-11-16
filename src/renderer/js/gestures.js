@@ -131,7 +131,7 @@ export class Gestures {
     const c = this.capri;
     const t = this.t;
     const say = (line, face, body, hold = 3000) => {
-      c.wake();
+      c.wake(true); // your hand at the camera: it's you calling her
       if (body) c.perform(body, c.towardCenter());
       this.panel.say({ kind: 'info', face, line, hold });
     };

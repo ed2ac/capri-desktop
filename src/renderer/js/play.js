@@ -161,16 +161,17 @@ export class Play {
   // ---- her minigame: reflex. She counts down, then flashes; click her as fast as you can ----
   reflex() {
     if (!this.free || this.game) return false;
-    this.game = { kind: 'reflex', go: 0 };
+    const game = { kind: 'reflex', go: 0 };
+    this.game = game;
     this.say('play.reflexStart', 'smug', 2600);
     const wait = 2500 + Math.random() * 3500;
     setTimeout(() => {
-      if (this.game?.kind !== 'reflex') return;
+      if (this.game !== game) return;
       this.game.go = performance.now();
       this.capri.perform('alarm', this.capri.towardCenter());
       this.voice.play('bolt');
       this.panel.say({ kind: 'alert', face: 'wide', line: this.t.reflexGo, hold: 2500 });
-      setTimeout(() => this.game?.kind === 'reflex' && this.reflexEnd(null), 3000);
+      setTimeout(() => this.game === game && this.reflexEnd(null), 3000);
     }, wait);
     return true;
   }
@@ -212,20 +213,22 @@ export class Play {
   // before she gives up. Shy as ever, she ducks to another edge when your pointer comes close.
   hideAndSeek() {
     if (!this.free || !this.capri.peek) return false;
-    this.game = { kind: 'hide', until: Date.now() + 3 * 60000 };
+    const game = { kind: 'hide', until: Date.now() + 3 * 60000 };
+    this.game = game;
     this.say('play.hideStart', 'smug', 2600);
     setTimeout(() => this.capri.peek(), 900);
-    setTimeout(() => this.gameOver(false), 3 * 60000);
+    setTimeout(() => this.game === game && this.gameOver(false), 3 * 60000); // this game's time, not the next one's
     return true;
   }
 
   // Tag: in a great mood, she dares you to catch her; your pointer near her and she's gone.
   tag() {
     if (!this.free) return false;
-    this.game = { kind: 'tag', until: Date.now() + 45000, dodges: 0, at: 0 };
+    const game = { kind: 'tag', until: Date.now() + 45000, dodges: 0, at: 0 };
+    this.game = game;
     this.capri.perform('hop', this.capri.towardCenter());
     this.say('play.tagStart', 'laugh', 2600);
-    setTimeout(() => this.gameOver(false), 45000);
+    setTimeout(() => this.game === game && this.gameOver(false), 45000);
     return true;
   }
 

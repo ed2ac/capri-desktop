@@ -1779,7 +1779,7 @@ async function snapScreen() {
 
 // What her AI says about that picture, as her (`persona`), asked `prompt`. With a code when it can't:
 // 'noai' (nothing to ask), 'novision' (that model can't look at pictures).
-async function sayAboutSnap({ id, persona, prompt, history = [] }) {
+async function sayAboutSnap({ id, persona, prompt, history = [], maxTokens = 160 }) {
   const image = snaps.get(id);
   snaps.delete(id);
   if (!image) return { ok: false, error: 'the picture is gone' };
@@ -1802,7 +1802,7 @@ async function sayAboutSnap({ id, persona, prompt, history = [] }) {
       } catch { /* her local model, then */ }
     }
   }
-  const local = await localSay({ persona, prompt, images: [image], history: before, maxTokens: 160, timeout: 120000 });
+  const local = await localSay({ persona, prompt, images: [image], history: before, maxTokens: Math.min(Number(maxTokens) || 160, 800), timeout: 180000 });
   return local.ok || local.code === 'novision' ? local : { ok: false, code: 'noai' };
 }
 
@@ -2708,6 +2708,8 @@ function main() {
     updatesStart(); // her new versions, asking first
     psnStart(); // your PS5, if connected
     cloudStart(); // her cloud (PS5 through Discord, the news), if connected
+    // 0.8.2: "when the processor runs hot" on for everyone once (she lightens up by herself when the PC is busy)
+    if (!config.load().heavyOn) config.save({ heavyOn: true, lightMode: { ...(config.load().lightMode || {}), heavy: true } });
     spotifyStart(); // your Spotify, if connected
     noticesSync(); // your notifications, if she may read them
     setTimeout(() => livesTick().catch(() => {}), 90000);
@@ -2735,7 +2737,7 @@ function main() {
           dormant: c.dormant, lounge: Boolean(c.lounge), wander: c.wander, restOn: c.restOn, idleFor: Math.round((performance.now() - c.lastActivity) / 1000), sleepAfter: Math.round((c.sleepAfter?.() || 0) / 1000),
           energy: d.heart.energy, level: d.heart.energyLevel, state: d.heart.state, presence: d.presence.state, holding: d.life.holding(), guide: d.guide.running,
           panel: d.panel.current ? { kind: d.panel.current.kind, actions: (d.panel.current.actions || []).length, guide: Boolean(d.panel.current.guide) } : null,
-          chat: d.chat.open, light: d.light.on, watch: d.watch.on, quietClaude: d.brain.isQuiet() }; })()`)).then((s) => ({ ...(s || {}), psn: config.load().psnRefresh ? psnHealth || 'not looked yet' : 'not connected', cloud: capriCloud.connected() ? { ...(cloudHealth || { looked: false }), playing: cloudLast?.game || null, news: cloudNews.length } : 'not connected' })),
+          chat: d.chat.open, light: d.light.on, lightWhy: d.light.why, watch: d.watch.on, quietClaude: d.brain.isQuiet(), pressing: Boolean(c.pressing), dragging: c.dragging, refuse: Math.max(0, Math.round((c.refuseUntil - performance.now()) / 1000)) || 0, face: d.face?.state, visitor: Boolean(d.chat.visitor), listening: d.converse?.listening }; })()`)).then((s) => ({ ...(s || {}), psn: config.load().psnRefresh ? psnHealth || 'not looked yet' : 'not connected', cloud: capriCloud.connected() ? { ...(cloudHealth || { looked: false }), playing: cloudLast?.game || null, news: cloudNews.length } : 'not connected' })),
       onSpotify: async (query) => {
         const r = await spotify.callback(query);
         if (r.ok) {

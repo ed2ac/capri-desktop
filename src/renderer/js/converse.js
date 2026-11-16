@@ -32,6 +32,7 @@ export class Converse {
     this.talking = false;    // a conversation started by voice: her questions in it are listened to
     this.startedAt = Date.now();
     this.lastStarter = Date.now();
+    this.nextStarter = 0;    // when the next one she starts may come (drawn once, after each)
     this.gap = [45, 90];     // minutes between conversations she starts (her menu › How talkative)
     this.lastListen = 0;
     setInterval(() => this.maybeStart().catch(() => {}), 60000);
@@ -76,41 +77,49 @@ export class Converse {
       return;
     }
     const ear = this.ear();
+    let ctx = null;
+    let spokeFor = 0;
     const chunks = [];
-    const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-    const ctx = new AudioContext();
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 1024;
-    ctx.createMediaStreamSource(stream).connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-    const started = performance.now();
-    let spoke = 0;
-    let quietSince = 0;
-    recorder.start(250);
-    const spokeFor = await new Promise((resolve) => {
-      const watch = setInterval(() => {
-        analyser.getFloatTimeDomainData(buf);
-        const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length);
-        const now = performance.now();
-        if (rms > QUIET) {
-          spoke = spoke || now;
-          quietSince = now;
-        }
-        const done = spoke ? now - quietSince > SILENCE_MS || now - started > MAX_MS : now - started > WAIT_MS;
-        if (done || !this.on) {
-          clearInterval(watch);
-          resolve(spoke ? quietSince - spoke : 0);
-        }
-      }, 100);
-    });
-    const stopped = new Promise((r) => { recorder.onstop = r; });
-    recorder.stop();
-    await stopped;
-    stream.getTracks().forEach((tr) => tr.stop());
-    ctx.close();
-    ear.remove();
-    this.listening = false;
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const buf = new Float32Array(analyser.fftSize);
+      const started = performance.now();
+      let spoke = 0;
+      let quietSince = 0;
+      recorder.start(250);
+      spokeFor = await new Promise((resolve) => {
+        const watch = setInterval(() => {
+          analyser.getFloatTimeDomainData(buf);
+          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length);
+          const now = performance.now();
+          if (rms > QUIET) {
+            spoke = spoke || now;
+            quietSince = now;
+          }
+          const done = spoke ? now - quietSince > SILENCE_MS || now - started > MAX_MS : now - started > WAIT_MS;
+          if (done || !this.on) {
+            clearInterval(watch);
+            resolve(spoke ? quietSince - spoke : 0);
+          }
+        }, 100);
+      });
+      const stopped = new Promise((r) => { recorder.onstop = r; });
+      recorder.stop();
+      await stopped;
+    } catch {
+      spokeFor = 0; // something in the way (the microphone taken): as if nobody answered
+    } finally {
+      // whatever happened: the microphone off, her ear gone, listening over
+      stream.getTracks().forEach((tr) => tr.stop());
+      ctx?.close().catch(() => {});
+      ear.remove();
+      this.listening = false;
+    }
     // a cough, a click: not an answer
     if (spokeFor < 450) return this.unanswered(question);
     const audio = await new Blob(chunks, { type: 'audio/webm' }).arrayBuffer();
@@ -132,6 +141,13 @@ export class Converse {
 
   // nobody answered: sometimes a little shrug, mostly nothing
   unanswered() {
+    // a talk out loud, and you didn't go on: her chat goes once you've had time to read her answer
+    if (this.talking && this.chat.open) {
+      const last = this.chat.history.at(-1);
+      const len = last?.role === 'assistant' ? String(last.content).length : 0;
+      this.chat.idle(Math.max(4000, Math.min(15000, 2500 + len * 40)));
+      return;
+    }
     if (this.chat.open || Math.random() > 0.3) return;
     setTimeout(() => {
       if (this.chat.open || this.capri.busy) return;
@@ -170,13 +186,15 @@ export class Converse {
   async maybeStart() {
     const now = Date.now();
     if (!this.ready() || this.light || this.chat.open || this.presence?.state !== 'here') return;
-    if (now - this.lastStarter < rand(this.gap[0], this.gap[1]) * 60000 || now - this.startedAt < 5 * 60000) return;
+    this.nextStarter ||= this.lastStarter + rand(this.gap[0], this.gap[1]) * 60000;
+    if (now < this.nextStarter || now - this.startedAt < 5 * 60000) return;
     const c = this.capri;
     if (c.busy || c.mode !== 'idle' || this.panel.visible || this.daily?.focus || this.camera?.paused || this.watch?.on) return;
     // not while you're typing away or in a game
     const idle = await this.host.pcIdle().catch(() => 0);
     if (idle < 8 || c.windows?.game) return;
     this.lastStarter = now;
+    this.nextStarter = 0;
     // now and then, a headline from her cloud about something of yours (news.js)
     if (Math.random() < 0.35 && this.memory && this.host.cloudNews) {
       const items = await this.host.cloudNews().catch(() => []);
@@ -207,7 +225,7 @@ export class Converse {
       this.chat.languageNote(),
     ].join('\n');
     const res = await this.host.localSay({ persona: this.chat.lookPersona(), prompt, maxTokens: 60, temperature: 1 }).catch(() => null);
-    const line = String(res?.text || '').split('\n')[0].trim();
+    const line = this.chat.fresh(String(res?.text || '').split('\n')[0].trim()) || '';
     if (!res?.ok || !line.endsWith('?') || !inLang(line, this.brain.lang) || this.chat.open || c.busy) return;
     c.wake();
     c.perform('look', c.towardCenter());

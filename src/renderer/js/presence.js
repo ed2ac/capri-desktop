@@ -167,18 +167,29 @@ export class Presence {
     const art = this.art?.last && this.art.last.at > Date.now() - was ? this.art.last : null;
     if (!recap.length && !art) return;
     const t = this.t;
-    const lines = [was > 20 * 60000 ? t.backLong : t.back, ...recap.slice(-4)];
-    if (art) lines.push(t.drew);
-    setTimeout(() => {
-      const c = this.capri;
-      c.wake();
-      c.perform('hop', c.towardCenter());
-      this.panel.say({ kind: 'info', face: 'laugh', line: lines.join('\n'), hold: 9000 + recap.length * 2500 });
-      if (art) {
-        const h = c.head();
-        this.art.show(Math.max(10, Math.min(window.innerWidth - 220, h.x + (h.x > window.innerWidth / 2 ? -260 : 60))), Math.max(10, h.y - 240));
-      }
-    }, 1200);
+    // one thing at a time: her hello, then each thing that happened, each with its own time to read
+    // her hello with the first thing ("while you were out: …"), then the rest one by one
+    const items = [...recap.slice(-4), ...(art ? [t.drew] : [])];
+    const lines = [`${was > 20 * 60000 ? t.backLong : t.back}\n${items[0]}`, ...items.slice(1)];
+    const c = this.capri;
+    let at = 1200;
+    lines.forEach((line, i) => {
+      const read = Math.min(10000, 3200 + line.length * 65);
+      setTimeout(() => {
+        if (this.state !== 'here') return;
+        if (i === 0) {
+          c.wake(true); // you're back: she's up for you
+          c.perform('hop', c.towardCenter());
+        }
+        // something more important on screen (a question of Claude's): this one waits its turn no more
+        if (!this.panel.say({ kind: 'info', face: i === 0 ? 'laugh' : 'look', line, hold: read })) return;
+        if (art && line.endsWith(t.drew)) {
+          const h = c.head();
+          this.art.show(Math.max(10, Math.min(window.innerWidth - 220, h.x + (h.x > window.innerWidth / 2 ? -260 : 60))), Math.max(10, h.y - 240));
+        }
+      }, at);
+      at += read + 500;
+    });
   }
 
   // what to tell you when you're back

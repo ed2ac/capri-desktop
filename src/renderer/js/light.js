@@ -8,8 +8,11 @@
 // card's memory back for the game).
 
 const CHECK_MS = 15000;
-const HEAVY_CPU = 75;     // %, over a minute
-const HEAVY_FOR = 60000;
+const HEAVY_CPU = 70;     // %, this long: the PC is busy, she lightens up…
+const HEAVY_FOR = 20000;
+const CALM_CPU = 50;      // …until it's under this, this long
+const CALM_FOR = 45000;
+const LAG_MS = 250;       // her own clock this late, a few times running: she's being starved too
 
 export class Light {
   constructor({ capri, panel, brain, host, camera, gestures, hearing, speech, look, converse, life, face, hands }) {
@@ -18,7 +21,16 @@ export class Light {
     this.why = null;
     this.rules = { games: true, claude: false, heavy: false, battery: false, always: false };
     this.cpuHigh = 0;
+    this.cpuLow = 0;
+    this.lagged = [];
     this.battery = null;
+    // her own heartbeat: when a 1-second timer comes this late, the PC (or she) is overloaded
+    let expected = performance.now() + 1000;
+    setInterval(() => {
+      const now = performance.now();
+      if (now - expected > LAG_MS) this.lagged = [...this.lagged.filter((t) => now - t < 30000), now];
+      expected = now + 1000;
+    }, 1000);
     navigator.getBattery?.().then((b) => { this.battery = b; }).catch(() => {});
     setInterval(() => this.check().catch(() => {}), CHECK_MS);
   }
@@ -36,10 +48,16 @@ export class Light {
     if (r.claude && (this.brain.busySessions?.length || this.hands?.running)) return 'claude';
     if (r.battery && this.battery && !this.battery.charging) return 'battery';
     if (r.heavy) {
+      const now = Date.now();
       const cpu = await this.host.cpu?.().catch(() => null);
-      if (cpu != null && cpu >= HEAVY_CPU) this.cpuHigh = this.cpuHigh || Date.now();
+      if (cpu != null && cpu >= HEAVY_CPU) this.cpuHigh = this.cpuHigh || now;
       else if (cpu != null) this.cpuHigh = 0;
-      if (this.cpuHigh && Date.now() - this.cpuHigh > HEAVY_FOR) return 'heavy';
+      if (cpu != null && cpu < CALM_CPU) this.cpuLow = this.cpuLow || now;
+      else this.cpuLow = 0;
+      const lagging = this.lagged.length >= 3;
+      const busy = lagging || (this.cpuHigh && now - this.cpuHigh > HEAVY_FOR);
+      // light because of it: stays light until the PC has been calm a while (no flapping)
+      if (busy || (this.why === 'heavy' && !(this.cpuLow && now - this.cpuLow > CALM_FOR))) return 'heavy';
     }
     return null;
   }

@@ -11,7 +11,7 @@
 
 import { headPose } from './gestures.js';
 import { fmt, rand, pick, inLang } from './util.js';
-import { clean, mood } from './chat.js';
+import { clean, mood, spontaneous } from './chat.js';
 
 const BASE = new URL('../../../', import.meta.url).href;
 const avg = (b, ...names) => names.reduce((s, n) => s + (b.find((c) => c.categoryName === n)?.score || 0), 0) / names.length;
@@ -249,7 +249,7 @@ export class Camera {
     const reading = /l[êe]|ler|leia|escrito|read|text|texto|lis|lee/i.test(ask);
     const prompt = ask
       ? `This is the user seen through their webcam right now, and they asked you: "${ask}". ${reading ? 'Read out exactly what is written on what they are showing, then react to it.' : 'Answer them about what you see.'} In character, two or three sentences.`
-      : 'This is the user seen through their webcam right now. React in character to one concrete thing you see (their expression, posture, what they hold or wear, the light, the room). One or two sentences, talking to them, never unkind about how they look.';
+      : `This is the user seen through their webcam right now. React in character to one concrete thing you see (their expression, posture, what they hold or wear, the light, the room), talking to them, never unkind about how they look. ${spontaneous()}`;
     if (!ask) this.capri.perform('curious', this.capri.towardCenter());
     const note = this.chat.languageNote();
     let res = await this.host.cameraLook({ image, persona: this.chat.lookPersona(), prompt: `${prompt}\n${note}` }).catch((err) => ({ ok: false, error: err.message }));
@@ -258,7 +258,8 @@ export class Camera {
       if (res?.ok && !inLang(res.text, this.brain.lang) && !ask) return { line: '', face: 'look' };
     }
     if (!res?.ok) return { line: res?.code === 'novision' ? t.noVision : fmt(t.failed, { error: res?.error || '…' }), face: 'aside' };
-    const line = clean(res.text).replace(/^["“«]\s*|\s*["”»]$/g, '');
+    const line = ask ? clean(res.text).replace(/^["“«]\s*|\s*["”»]$/g, '') : this.chat.fresh(res.text);
+    if (!ask && !line) return { line: '', face: 'look' };
     if (!ask && line && this.look.free()) this.panel.say({ kind: 'info', badge: this.brain.t.badges?.cam || 'CAM', face: mood(line), line, hold: Math.min(12000, 2500 + line.length * 55) });
     return { line, face: mood(line) };
   }

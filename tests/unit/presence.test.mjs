@@ -69,7 +69,7 @@ test('away long enough: asleep with the camera off; your keyboard doesn\'t wake 
   assert.equal(p.state, 'here');
 });
 
-test('back: what happened while you were away', async () => {
+test('back: what happened while you were away, one thing at a time', async () => {
   const { p, cam, pc, said } = world();
   cam.lastFaceAt = 0;
   p.since = 0;
@@ -79,7 +79,7 @@ test('back: what happened while you were away', async () => {
   cam.lastFaceAt = Date.now();
   await p.tick();
   assert.equal(p.state, 'here');
-  await new Promise((r) => { setTimeout(r, 1400).ref?.(); });
+  await new Promise((r) => { setTimeout(r, 9000).ref?.(); });
   assert.match(said.join('\n'), /Claude em capri: Pronto, os testes passam\./);
 });
 

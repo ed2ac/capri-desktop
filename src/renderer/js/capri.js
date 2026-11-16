@@ -1344,13 +1344,13 @@ export class Capri {
 
   // Leave in a column of light, reappear somewhere else.
   async teleport(to, opts = {}) {
-    this.onExert?.(0.3); // her moves cost her energy (heart.js)
     if (this.stowed) return; // put away: she stays in her biochip
     if (this.busy || this.dormant) {
       this.pending = { to, opts };
       if (this.dormant) this.rouse(); // asleep, down to her mask: she comes back first, then goes
       return;
     }
+    this.onExert?.(0.3); // her moves cost her energy (heart.js)
     this.busy = true;
     this.wake(true);
     this.onTeleport?.('start');
@@ -1892,18 +1892,24 @@ export class Capri {
       if (e.button !== 0 || !this.hit(e.clientX, e.clientY)) return;
       // thrown: you can catch her on the fly, or pick her up off the floor
       const thrown = this.stance === 'fly' || this.stance === 'down';
-      if (this.busy && !thrown) return;
       if (!thrown && performance.now() < this.refuseUntil) {
-        this.dodge(); // thrown around once too often: not again
+        // thrown around once too often: not again. She slips away once; after that, a pout
+        if (!this.refusedOnce) {
+          this.refusedOnce = true;
+          this.dodge();
+        } else this.onRefuse?.();
         return;
       }
-      down = { x: e.clientX, y: e.clientY, pos: { ...this.pos }, at: this.spritePoint(e.clientX, e.clientY) };
+      // busy a moment (a teleport, a window she's getting into, getting up): held all the same, and
+      // she's picked up as soon as she's done if your button's still down (the mousemove below)
+      down = { x: e.clientX, y: e.clientY, pos: { ...this.pos }, at: this.spritePoint(e.clientX, e.clientY), busy: this.busy && !thrown };
+      this.pressing = true;
       this.track = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       // held there, still, a while: a hug (play.js), and no click after it
       clearTimeout(this.hugTimer);
       const held = down;
       this.hugTimer = setTimeout(() => {
-        if (down !== held || this.dragging) return;
+        if (down !== held || this.dragging || this.busy) return;
         held.hugged = true;
         this.onHug?.();
       }, 1100);
@@ -1911,12 +1917,31 @@ export class Capri {
     });
     window.addEventListener('mousemove', (e) => {
       this.mouse = { x: e.clientX, y: e.clientY }; // a window she's in watches it
+      // the button let go somewhere she never heard of (over another window): nothing held anymore
+      if (down && !(e.buttons & 1)) {
+        down = null;
+        this.pressing = false;
+        clearTimeout(this.hugTimer);
+        if (this.dragging) {
+          this.dragging = false;
+          this.setStance('stand');
+          this.onTeleport?.('end');
+          this.drop();
+        }
+        return;
+      }
       if (down) {
         const now = performance.now();
         this.track.push({ x: e.clientX, y: e.clientY, t: now });
         while (this.track.length > 2 && now - this.track[0].t > 160) this.track.shift();
         const dx = e.clientX - down.x, dy = e.clientY - down.y;
-        if (!this.dragging && Math.hypot(dx, dy) > 5 && !this.busy) this.pickUp(down);
+        if (!this.dragging && Math.hypot(dx, dy) > 5 && !this.busy) {
+          // held while she was busy: picked up from where she is now
+          if (down.busy) {
+            down = { ...down, x: e.clientX, y: e.clientY, pos: { ...this.pos }, busy: false };
+          }
+          this.pickUp(down);
+        }
         if (this.dragging) {
           this.pos = {
             x: clamp(down.pos.x + dx, 40, this.view.w - 40),
@@ -1932,10 +1957,12 @@ export class Capri {
       this.onPointer?.(e.clientX, e.clientY); // play.js: shooing, staring
     });
     window.addEventListener('mouseup', () => {
+      this.pressing = false;
       if (!down) return;
       const wasDragging = this.dragging;
       const was = down;
       down = null;
+      if (was.busy && !wasDragging) return; // a click while she was busy: nothing
       clearTimeout(this.hugTimer);
       this.dragging = false;
       if (!wasDragging) {

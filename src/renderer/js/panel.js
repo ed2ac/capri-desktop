@@ -116,15 +116,20 @@ export class Panel {
   // onLeave: () => void, when this message goes (closed, timed out or replaced)
   say(msg) {
     if (msg && typeof msg.line === 'string') msg = { ...msg, line: tidy(msg.line) };
+    // asleep (app.js tells): nothing of hers on her own. What wakes her (you, a reminder) wakes her
+    // first, with capri.wake(true), and is said then.
+    if (['idle', 'info'].includes(msg?.kind) && !msg.awake && this.asleep?.()) return false;
     const cur = this.current;
     // don't step on something more important that just appeared (one step of her guide follows another)
     const steps = cur?.guide && msg.guide;
-    if (cur && this.visible && !steps && cur.kind !== msg.kind && PRIORITY[cur.kind] > PRIORITY[msg.kind] && performance.now() - cur.at < 2600) {
+    // on screen, or only put aside a moment (she's teleporting): it still counts
+    const shown = !this.el.hidden && !this.leaving;
+    if (cur && shown && !steps && cur.kind !== msg.kind && PRIORITY[cur.kind] > PRIORITY[msg.kind] && performance.now() - cur.at < 2600) {
       return false;
     }
     // nor on something you may be reading: an answer, her report (progress lines don't knock it off)
-    if (cur?.reply && this.visible && PRIORITY[msg.kind] < 2) return false;
-    if (cur?.report && this.visible && PRIORITY[msg.kind] < 3) return false;
+    if (cur?.reply && shown && PRIORITY[msg.kind] < 2) return false;
+    if (cur?.report && shown && PRIORITY[msg.kind] < 3) return false;
     // nor on a chat with her: only a permission prompt breaks in; Claude finishing waits until after
     // (even while she teleports and the panel is put aside for a moment). Her setup's panels with a
     // line to type in (a key) aren't a chat: its next step follows them.
@@ -132,12 +137,12 @@ export class Panel {
       if (PRIORITY[msg.kind] >= 3) this.missed = { ...msg, missedAt: performance.now() };
       return false;
     }
-    if (cur && this.visible) this.onDismiss?.(cur);
+    if (cur && shown) this.onDismiss?.(cur); // a question replaced is a question gone (her guide stops waiting)
     cur?.onLeave?.();
     this.current = { ...msg, at: performance.now() };
     // what she said lately, so her AI doesn't say it again (chat.js languageNote)
     if (msg.line && !msg.guide && msg.line.length > 20) {
-      this.recent = [...(this.recent || []).filter((r) => r.line !== msg.line && performance.now() - r.at < 3 * 3600000), { line: msg.line, at: performance.now() }].slice(-8);
+      this.recent = [...(this.recent || []).filter((r) => r.line !== msg.line && performance.now() - r.at < 3 * 3600000), { line: msg.line, at: performance.now() }].slice(-14);
     }
     clearTimeout(this.hideTimer);
 

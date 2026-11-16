@@ -53,20 +53,37 @@ test('states with names, and what they change', () => {
   assert.match(fresh({ mood: 15 }).persona(), /sad/);
 });
 
-test('her energy is a battery: awake drains it, sleep refills it', () => {
-  const h = fresh({ energy: 60 });
-  h.nightFactor = () => 1;
-  h.sleeping = () => 0;
-  for (let i = 0; i < 60; i++) h.tick();
-  assert.ok(h.s.energy < 54 && h.s.energy > 50, `awake an hour: ${h.s.energy}`);
-  h.sleeping = () => 2;
-  for (let i = 0; i < 20; i++) h.tick();
-  assert.ok(h.s.energy > 85, `asleep 20 min: ${h.s.energy}`);
+test('her energy is a battery: awake drains it (little in the morning, a lot late at night), sleep refills it', () => {
+  const day = fresh({ energy: 60 });
+  day.dayFactor = () => 1;   // the evening's pace
+  day.target = () => 0;      // no morning lift
+  day.sleeping = () => 0;
+  for (let i = 0; i < 60; i++) day.tick();
+  assert.ok(day.s.energy < 56 && day.s.energy > 54, `awake an hour: ${day.s.energy}`);
+  day.nightFactor = () => 1;
+  day.sleeping = () => 2;
+  for (let i = 0; i < 20; i++) day.tick();
+  assert.ok(day.s.energy > 85, `asleep 20 min: ${day.s.energy}`);
+  const morning = fresh({ energy: 60 });
+  morning.target = () => 0;
+  morning.sleeping = () => 0;
+  morning.dayFactor = () => morning.constructor.prototype.dayFactor.call(morning, 9);
   const night = fresh({ energy: 60 });
-  night.nightFactor = () => 1.8;
   night.sleeping = () => 0;
-  for (let i = 0; i < 60; i++) night.tick();
-  assert.ok(night.s.energy < h.s.energy - 30 && night.s.energy < 50, 'at night awake costs more');
+  night.target = () => 0;
+  night.dayFactor = () => night.constructor.prototype.dayFactor.call(night, 2);
+  for (let i = 0; i < 60; i++) { morning.tick(); night.tick(); }
+  assert.ok(morning.s.energy > 57, `a morning hour costs little: ${morning.s.energy}`);
+  assert.ok(night.s.energy < morning.s.energy - 6, `at 2 a.m. it costs a lot: ${night.s.energy}`);
+  night.exert(1);
+  morning.exert(1);
+  assert.ok(60 - night.s.energy > 60 - morning.s.energy, 'and so do her moves');
+  // the weather: rain makes her sluggish, a sunny day lifts her mood
+  const rain = fresh({ energy: 60 });
+  rain.setWeather({ kind: 'rain' });
+  assert.ok(rain.dayFactor(15) > fresh({}).dayFactor(15));
+  rain.setWeather({ kind: 'sunny' });
+  assert.ok(rain.moodTarget(15) > rain.s.base);
 });
 
 test('the PC off for the night: she slept through it', () => {

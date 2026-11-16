@@ -17,7 +17,9 @@ const SAME = 0.5;          // face distance under this: the same person
 const OTHER = 0.62;        // over this: clearly someone else; in between she isn't sure, and keeps what she thought
 const LEARN = 0.42;        // this sure it's you: an angle of your face worth remembering (head down, turned…)
 const DOUBT_MS = 9000;     // someone she doesn't know this long (no match of you meanwhile): a stranger
-const DOUBT_STILL_MS = 45000; // …but if your face never left the picture, it's still you, looking down: much longer
+const DOUBT_STILL_MS = 20000; // …but if your face never left the picture, it may still be you, looking down: longer
+const UNSURE_MS = 25000;   // a face only half like yours (a brother, a sister) this long, and never clearly you: someone else
+const BACK_VOTES = 2;      // someone else was there: you, clearly (under LEARN), this many looks in a row
 const MIN_SCORE = 0.7;     // a detection weaker than this, or…
 const MIN_WIDTH = 70;      // …a face smaller than this (px): too poor a look to judge by
 const EVERY = 3000;        // a look at who's there
@@ -252,8 +254,9 @@ export class FaceId {
     // nothing to recognize: the camera's own face finder (camera.js, far lighter) sees no face, and
     // whoever was there is already known gone
     if (Date.now() - (this.camera.lastFaceAt || 0) > 5000 && this.state === 'none') return;
-    // you, settled in front of it a while: a look every 12 s is enough (each look stalls the graphics card a moment)
-    if (this.state === 'owner' && Date.now() - this.since > 60000 && (this.calmTicks = (this.calmTicks || 0) + 1) % 4) return;
+    // you, settled in front of it a while: a look every 12 s is enough (each look stalls the graphics
+    // card a moment). Not while she has a doubt: then every look counts.
+    if (this.state === 'owner' && !this.doubt && !this.unsure && Date.now() - this.since > 60000 && (this.calmTicks = (this.calmTicks || 0) + 1) % 4) return;
     this.busy = true;
     try {
       const faces = await this.readings().catch(() => null);
@@ -262,9 +265,18 @@ export class FaceId {
       const ids = faces.map((f) => ({ ...f, ...this.match(f.d) }));
       const you = ids.filter((x) => x.who === 'owner').sort((a, b) => a.dist - b.dist)[0];
       if (you) {
+        // someone else was just here (a sister looks a lot like her brother): back to you only on a
+        // clear look of you, a few in a row
+        if (this.state === 'stranger' || this.state === 'guest') {
+          if (you.dist >= LEARN) { this.backVotes = 0; return undefined; }
+          if ((this.backVotes = (this.backVotes || 0) + 1) < BACK_VOTES) return undefined;
+        }
+        this.backVotes = 0;
         this.doubt = null;
+        this.unsure = null;
         this.ownerAt = now;
-        this.learn(you.d, you.dist);
+        // a new angle of you learned only when nobody else has been around lately (never someone like you)
+        if (now - (this.otherAt || 0) > 5 * 60000) this.learn(you.d, you.dist);
         return this.setState('owner');
       }
       if (!ids.length) {
@@ -282,7 +294,13 @@ export class FaceId {
       // someone else (your head down, turned, the light); and if your face never left the picture,
       // nobody took your seat.
       const best = ids.sort((a, b) => a.dist - b.dist)[0];
-      if (best.score < MIN_SCORE || best.width < MIN_WIDTH || best.dist < OTHER) return undefined; // not sure: as she was
+      if (best.score < MIN_SCORE || best.width < MIN_WIDTH) return undefined; // too poor a look: as she was
+      if (best.dist < OTHER) {
+        // only half like you: a bad angle of you… or someone who looks like you. Never clearly you for
+        // a good while: someone else.
+        this.unsure = this.unsure || { since: now };
+        if (now - this.unsure.since < UNSURE_MS) return undefined;
+      }
       this.doubt = this.doubt || { since: now };
       const seenSince = this.camera.state?.seen || 0; // when the face in the picture appeared (camera.js)
       const stayed = this.state === 'owner' && seenSince && seenSince <= (this.ownerAt || 0);
@@ -315,10 +333,15 @@ export class FaceId {
     this.state = state;
     this.guest = state === 'guest' ? name : null;
     this.since = Date.now();
+    if (state === 'guest' || state === 'stranger') this.otherAt = Date.now();
+    this.unsure = null;
     this.locked = false;
     // someone else at your PC: hers to keep to herself
     const privateMode = state === 'guest' || state === 'stranger';
-    this.chat.visitor = privateMode ? { name: this.guest } : null;
+    const was = this.chat.visitor;
+    this.chat.visitor = privateMode ? { name: this.guest || was?.name || null } : null;
+    // another person: a fresh conversation (what you told her isn't theirs, nor theirs yours)
+    if (Boolean(was) !== privateMode || (privateMode && was && was.name !== this.chat.visitor.name && this.guest)) this.chat.newPerson?.();
     this.activity.privacy = privateMode;
     this.look.privacy = privateMode;
     this.camera.privacy = privateMode;
@@ -331,7 +354,16 @@ export class FaceId {
       this.panel.say({ kind, face, line, hold: 6000 });
     };
     if (state === 'guest') say(fmt(this.brain.line('face.guest'), { who: toThem(this.guest || '', this.owner), name: relation(this.guest).bare, owner: this.owner }), 'grin');
-    else if (state === 'stranger') say(fmt(this.brain.line('face.stranger'), { owner: this.owner || t.ownerFallback }), 'wide', 'alert');
+    else if (state === 'stranger') {
+      say(fmt(this.brain.line('face.stranger'), { owner: this.owner || t.ownerFallback }), 'wide', 'alert');
+      // still here a moment later, using the PC: she asks who they are, in her chat
+      setTimeout(async () => {
+        if (this.state !== 'stranger' || this.screenLocked || this.capri.stowed || this.chat.open || this.chat.visitor?.name) return;
+        const idle = await this.host.pcIdle?.().catch(() => 99);
+        if (idle > 20) return;
+        this.chat.start({ opening: fmt(this.brain.line('face.whoAreYou'), { owner: this.owner || t.ownerFallback }) }).catch(() => {});
+      }, 7000);
+    }
     else if (state === 'owner' && (prev === 'guest' || prev === 'stranger')) say(fmt(this.brain.line('face.ownerBack'), { name: this.owner }), 'laugh');
   }
 }

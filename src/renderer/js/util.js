@@ -1,6 +1,17 @@
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const rand = (a, b) => a + Math.random() * (b - a);
-export const pick = (list) => list[Math.floor(Math.random() * list.length)];
+// one of a list, at random, but not one of the last few picked from that same list (her written
+// lines don't come back twice in a row)
+const lastPicks = new WeakMap();
+export const pick = (list) => {
+  if (!Array.isArray(list) || list.length < 3) return list?.[Math.floor(Math.random() * (list?.length || 0))];
+  const recent = lastPicks.get(list) || [];
+  const keep = Math.min(list.length - 1, Math.max(1, Math.floor(list.length / 2)));
+  const free = list.map((_, i) => i).filter((i) => !recent.includes(i));
+  const i = free[Math.floor(Math.random() * free.length)];
+  lastPicks.set(list, [...recent, i].slice(-keep));
+  return list[i];
+};
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 export const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -49,9 +60,18 @@ export const today = (d = new Date()) => {
 
 // Tweens a set of numeric props on `target`. Values are read by the stepped render loop,
 // so the result lands on whole drawing frames like cel animation.
+// which tween moves each value of an object now: a newer one on the same value takes it over (two
+// at once, the older one finishing last, would leave it where the older one wanted)
+const owners = new WeakMap();
 export function tween(target, to, ms, easing = ease.out) {
   const from = {};
-  for (const k of Object.keys(to)) from[k] = target[k];
+  const me = {};
+  const own = owners.get(target) || {};
+  owners.set(target, own);
+  for (const k of Object.keys(to)) {
+    from[k] = target[k];
+    own[k] = me;
+  }
   const start = performance.now();
   return new Promise((resolve) => {
     if (ms <= 0) {
@@ -62,7 +82,7 @@ export function tween(target, to, ms, easing = ease.out) {
     const tick = () => {
       const t = Math.min(1, (performance.now() - start) / ms);
       const e = easing(t);
-      for (const k of Object.keys(to)) target[k] = lerp(from[k], to[k], e);
+      for (const k of Object.keys(to)) if (own[k] === me) target[k] = lerp(from[k], to[k], e);
       if (t < 1) requestAnimationFrame(tick);
       else resolve();
     };
@@ -124,4 +144,36 @@ export function inLang(text, lang) {
   const own = (String(text).match(WORDS[lang]) || []).length;
   // more English than her language, or English and nothing of hers at all
   return !((en >= 2 && en > own) || (en >= 1 && own === 0));
+}
+
+// ---- variety: what she says on her own (her AI) ----
+
+const words = (s) => new Set(String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4));
+
+// how alike two lines are: the share of their words (4 letters or more) in common, 0..1
+export function similar(a, b) {
+  const A = words(a);
+  const B = words(b);
+  if (!A.size || !B.size) return 0;
+  let both = 0;
+  for (const w of A) if (B.has(w)) both++;
+  return both / Math.min(A.size, B.size);
+}
+
+// a line too much like one she said lately: better left unsaid
+export const stale = (line, recent = []) => recent.some((r) => similar(line, r) >= 0.5);
+
+// one idea per line: a small model likes to join two things in one breath ("…! And also, …").
+// Kept: whole sentences, up to `max` characters (at least the first one).
+const SHIFT = /^(?:e\s+)?(?:falando\s+nisso|por\s+falar\s+nisso|ali[áa]s|ah,?\s+e\b|e\s+tamb[ée]m|tamb[ée]m\b|mudando\s+de\s+assunto|outra\s+coisa|by\s+the\s+way|also\b|speaking\s+of|anyway|oh,?\s+and)/i;
+export function oneIdea(text, max = 170) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim();
+  const parts = (s.match(/[^.!?…]+[.!?…]+["”»)]?\s*|[^.!?…]+$/g) || [s]).map((p) => p.trim()).filter(Boolean);
+  let out = parts[0] || '';
+  for (const [i, p] of parts.slice(1).entries()) {
+    // another subject starting ("e falando nisso", "aliás", "by the way"), a third sentence, too long: stop
+    if (SHIFT.test(p) || i >= 1 || `${out} ${p}`.length > max) break;
+    out = `${out} ${p}`;
+  }
+  return out;
 }

@@ -137,7 +137,7 @@ export class LockWatch {
     }
     // you're back: awake (unlocking is coming back to her), and what she saw
     const c = this.capri;
-    c.wake();
+    c.wake(true);
     setTimeout(() => {
       c.perform(visits.length ? 'curious' : 'hop', c.towardCenter());
       this.panel.say({ kind: 'info', face: visits.length ? 'wide' : 'laugh', line: lines.join('\n'), hold: 6000 + visits.length * 3000 });

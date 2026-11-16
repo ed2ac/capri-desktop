@@ -8,7 +8,7 @@
 // the next day, writes her diary of it: her chat remembers your last days. All of it on this PC.
 
 import { fmt, rand, inLang, scrub } from './util.js';
-import { clean, mood } from './chat.js';
+import { clean, mood, spontaneous } from './chat.js';
 
 const FIRST_AFTER = 90 * 1000;            // turned on: not right away
 const ACTIVE_MS = 90 * 1000;              // only when you're there (the pointer moved lately)
@@ -298,7 +298,7 @@ export class Activity {
     }
     this.busy = true;
     try {
-      let res = await this.host.activitySay({ persona: this.chat.lookPersona(), prompt: this.prompt(why) });
+      let res = await this.host.activitySay({ persona: this.chat.lookPersona(), prompt: `${this.prompt(why)}\n${spontaneous()}` });
       // slipped into English: once more, insisting on her language
       if (res.ok && !inLang(res.text, this.brain.lang)) {
         res = await this.host.activitySay({ persona: this.chat.lookPersona(), prompt: `${this.prompt(why)}\n${this.chat.languageNote()} ${this.chat.languageNote()}` });
@@ -311,7 +311,7 @@ export class Activity {
         }
         return;
       }
-      const text = clean(res.text).replace(/^["“«]\s*|\s*["”»]$/g, '');
+      const text = this.chat.fresh(res.text);
       if (!text || !this.look.free()) return; // something more important came up meanwhile
       this.chat.seen = { text, at: Date.now() }; // her chat knows what she said
       this.capri.perform('curious', this.capri.towardCenter());

@@ -55,8 +55,9 @@ const WORDS = [
 
 // her energy, in levels: [name, from]
 const ENERGY_LEVELS = [['electric', 85], ['lively', 70], ['ok', 50], ['tired', 35], ['exhausted', 20], ['drained', 0]];
-// a minute of her: what being awake costs, what sleeping gives back (night: awake costs more, sleep gives more)
-const DRAIN = 0.12;      // per minute awake
+// a minute of her: what being awake costs, what sleeping gives back. Awake costs follow the hour
+// (dayFactor: little in the morning, a lot late at night); sleep gives more at night.
+const DRAIN = 0.08;      // per minute awake (× dayFactor: ~2.4/h in the morning, ~4/h afternoon, ~8–10/h at 2 a.m.)
 const REFILL = 1.4;      // per minute asleep (dozing down to her mask: deeper, more)
 
 export class Heart {
@@ -134,6 +135,13 @@ export class Heart {
     return joy;
   }
 
+  // where her mood drifts to: her day's, the hour's touch, the weather's
+  moodTarget(h = new Date().getHours()) {
+    const hour = h >= 9 && h < 13 ? 4 : h >= 18 && h < 22 ? 2 : h >= 1 && h < 6 ? -6 : 0;
+    const sky = { sunny: 5, rain: -4, cold: -3, hot: -3 }[this.weather?.kind] || 0;
+    return clamp(this.s.base + hour + sky);
+  }
+
   // what the hour does to her energy: low from 1 to 6, rising in the morning
   target() {
     const h = new Date().getHours() + new Date().getMinutes() / 60;
@@ -143,15 +151,29 @@ export class Heart {
     return 80;
   }
 
-  // what she does costs her (a hop, a teleport, a dance: capri.js tells, a little each)
+  // what she does costs her (a hop, a teleport, a dance: capri.js tells, a little each): cheap in
+  // the morning, dear late at night (she's sleepy anyway)
   exert(cost = 0.15) {
-    this.s.energy = clamp(this.s.energy - cost * this.nightFactor());
+    this.s.energy = clamp(this.s.energy - cost * this.dayFactor());
   }
 
-  // late, awake costs more and sleep gives more
+  // late, sleep gives more (deep sleep)
   nightFactor() {
     const h = new Date().getHours();
     return h >= 23 || h < 6 ? 1.8 : h >= 21 ? 1.3 : 1;
+  }
+
+  // what being awake costs at this hour, × the weather (rain and heat make her sluggish; a nice
+  // day, less): the morning light, little; the small hours, a lot
+  dayFactor(h = new Date().getHours()) {
+    const hour = h < 1 ? 1.7 : h < 6 ? 2 : h < 12 ? 0.5 : h < 18 ? 0.8 : h < 21 ? 1 : h < 23 ? 1.3 : 1.7;
+    const sky = { rain: 1.15, cold: 1.1, hot: 1.25, sunny: 0.9 }[this.weather?.kind] || 1;
+    return hour * sky;
+  }
+
+  // the weather outside (daily.js, about every hour): { kind: rain|cold|hot|sunny|null, temp }
+  setWeather(w) {
+    this.weather = w && { kind: w.kind || null, temp: w.temp, at: Date.now() };
   }
 
   get energyLevel() {
@@ -201,8 +223,16 @@ export class Heart {
     // her battery: refilling while she sleeps (deeper down to her mask), draining while she's awake
     const sleep = this.sleeping?.() || 0; // 0 awake, 1 asleep, 2 dozing down to her mask
     if (sleep) this.s.energy = clamp(this.s.energy + REFILL * (sleep === 2 ? 1.3 : 1) * this.nightFactor());
-    else this.s.energy = clamp(this.s.energy - DRAIN * this.nightFactor());
-    this.s.mood = clamp(this.s.mood + (this.s.base - this.s.mood) * 0.02);
+    else {
+      this.s.energy = clamp(this.s.energy - DRAIN * this.dayFactor());
+      // the morning wakes her up by itself, a little (a short night still leaves her low, but not
+      // dead tired at 10 a.m.)
+      const h = new Date().getHours();
+      if (h >= 6 && h < 12 && this.s.energy < this.target()) this.s.energy = clamp(this.s.energy + 0.12);
+    }
+    // her mood drifts toward her day's, with the hour (brighter late morning, lower in the small
+    // hours) and the weather (a nice day lifts it, grey rain weighs it down a bit)
+    this.s.mood = clamp(this.s.mood + (this.moodTarget() - this.s.mood) * 0.02);
     this.s.base = clamp(this.s.base + (this.s.mood - this.s.base) * 0.003, 35, 75);
     if (ignored || this.ignored?.()) {
       this.s.boredom = clamp(this.s.boredom + rand(0.8, 1.6));
@@ -268,7 +298,11 @@ export class Heart {
     const extra = [];
     if (this.s.base > 65) extra.push('it has been a good day for you');
     else if (this.s.base < 45) extra.push('it has been a rough day for you');
-    if (new Date().getHours() < 5 && new Date().getHours() >= 1 && !this.away?.()) extra.push('it is very late and the user is still up: you nudge them to sleep');
+    const h = new Date().getHours();
+    if (h < 5 && h >= 1 && !this.away?.()) extra.push('it is very late and the user is still up: you nudge them to sleep');
+    else extra.push(h < 6 ? 'it is the dead of night' : h < 9 ? 'it is early morning: you are still waking up' : h < 12 ? 'it is the morning: fresh, things to do' : h < 14 ? 'it is lunchtime' : h < 18 ? 'it is the afternoon' : h < 21 ? 'it is the evening: winding down' : 'it is night: getting sleepy');
+    const sky = { rain: 'it is raining outside: cosy, a little lazy', cold: 'it is cold outside: you feel chilly', hot: 'it is hot outside: you feel sluggish, melting a bit', sunny: 'it is a nice sunny day outside: it lifts you' }[this.weather?.kind];
+    if (sky) extra.push(sky);
     const energy = this.energyPersona();
     return `How you feel inside right now: ${style}${extra.length ? `; ${extra.join('; ')}` : ''}.${energy ? ` ${energy}.` : ''} Let it show in how you talk, without naming it or giving numbers.`;
   }

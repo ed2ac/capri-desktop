@@ -5,7 +5,7 @@
 // or the model asks for it with a tag in its answer. Music right away; an app you named yourself
 // right away; anything only the model asked for, a website, and closing an app behind a button.
 
-import { pick, fmt, inLang, scrub, slang } from './util.js';
+import { pick, fmt, inLang, scrub, slang, stale, oneIdea } from './util.js';
 import { ASSISTANT_NAMES } from './lines.js';
 import { parseReminder, parseWhen, clock } from './reminders.js';
 import { folderIn } from './hands.js';
@@ -273,6 +273,20 @@ function robloxGame(text) {
   return name.length >= 2 ? name : null;
 }
 // "regarde mon écran", "tu vois quoi ?", "what's on my screen?", "что ты видишь?"
+// for a line she says on her own (her screen, the camera, what you do): an angle drawn each time,
+// one idea, short, and none of the clichés a small model loves
+export const spontaneous = () => `This time, your angle: ${pick(ANGLES)}. ONE idea only, never two subjects in one line ("…! And by the way…"), at most about 20 words. Avoid grand clichés (unravelling the universe, something ambitious, hacking the matrix, the future).`;
+
+// the angles of what she says on her own: one drawn each time, so it isn't always the same joke
+const ANGLES = [
+  'a curious question about one small detail', 'a short playful tease', 'a sincere little compliment', 'a quick useful tip about it',
+  'compare it to something from Night City', 'say how it makes you feel right now (your mood, your energy)', 'a guess about what they are trying to do',
+  'a tiny funny observation, deadpan', 'react to one word, colour or picture you notice', 'a memory of yours it reminds you of (you are a digital ghost)',
+  'encourage them, briefly', 'a sleepy or hyper remark, matching your energy', 'pretend to be unimpressed, then admit you like it', 'a one-word reaction and a short follow-up',
+];
+// help with what's on your screen: "me ajuda a entender como resolver isso na minha tela", "o que tá
+// errado aqui na tela?", "como eu resolvo esse erro aqui?" — a careful look, step by step
+export const LOOK_HELP = /(?:me\s+)?ajud\w*\s+(?:a\s+)?(?:entender|resolver|consertar|corrigir|fazer|com)\b.*\b(?:tela|isso\s+aqui|esse\s+erro|esse\s+problema)|(?:como|o\s+que)\s+(?:eu\s+)?(?:resolvo|conserto|corrijo|fa[çc]o|arrumo)\s+(?:isso|esse\s+erro|esse\s+problema).*\b(?:tela|aqui)|o\s+que\s+(?:t[áa]|est[áa])\s+(?:errado|dando\s+errado|acontecendo)\s+(?:aqui\s+)?(?:na|nessa|com\s+a)\s+(?:minha\s+)?tela|(?:analis\w*|examin\w*|olh\w*)\s+(?:com\s+calma|direito|com\s+cuidado|a\s+fundo)\s+(?:a\s+)?(?:minha\s+|essa\s+)?tela|help\s+me\s+(?:understand|fix|solve)\b.*\b(?:screen|this)|what(?:'s|\s+is)\s+wrong\s+(?:on|with)\s+my\s+screen/iu;
 const LOOK_ASK = /regarde (?:mon|l['’]|ce que)|(?:jette|jeter) un (?:œil|oeil)|tu vois quoi|qu['’]est[- ]ce que tu vois|look at (?:my|the|this) screen|what(?:'s| is) on my screen|what do you see|take a look|mira (?:mi|la) pantalla|qu[ée] ves|olha (?:minha|a) tela|o que voc[êe] v[êe]|посмотри на (?:мой )?экран|что ты видишь/i;
 // what her tag needs to find in your message before it does anything: a small model tags answers about
 // anything ("[[music: synthwave]]" under a film tip), and music and the media keys act right away
@@ -447,7 +461,7 @@ export class Chat {
     clearTimeout(this.idleTimer);
     const last = this.history.at(-1);
     const len = last?.role === 'assistant' ? String(last.content).length : 0;
-    const wait = ms ?? Math.max(20000, Math.min(60000, 15000 + len * 50));
+    const wait = ms ?? Math.max(12000, Math.min(40000, 8000 + len * 45));
     this.idleTimer = setTimeout(() => this.idleClose(), wait);
   }
 
@@ -503,11 +517,12 @@ export class Chat {
       // not a move: the game's over, and this is a message like any other
     }
     this.capri.pulse();
+    this.visitorName(text);
     this.onMessage?.(text);
     // what you asked for plainly happens right away (the music, the volume, an app you named): her
     // line about it comes under her answer (Claude Code, answering her chat, does things its own way)
     const asked = this.agent ? null : this.asked(text);
-    if (asked?.kind === 'look') return this.sendLook(text, id);
+    if (asked?.kind === 'look') return this.sendLook(text, id, asked.deep);
     if (asked?.kind === 'care') return this.sendCare(asked, id);
     if (asked?.kind === 'game') {
       const line = await this.games.start(asked.game).catch(() => null);
@@ -669,7 +684,7 @@ export class Chat {
 
   // "Look at my screen" in her chat: she looks (asking you first, the first time) and answers here,
   // the conversation so far in mind.
-  async sendLook(text, id) {
+  async sendLook(text, id, deep = false) {
     const tl = this.brain.t.look;
     const say = (line, face = 'aside') => {
       if (this.turn !== id) return;
@@ -700,9 +715,12 @@ export class Chat {
     this.look.effect();
     const res = await this.host.lookSay({
       id: snap.id,
-      persona: this.lookPersona(),
+      persona: deep ? this.helpPersona() : this.lookPersona(),
       history: this.history.slice(-REMEMBER, -1),
-      prompt: `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you. Answer about what you really see, in character. If they ask you to read something (an error, a message, code), quote what it actually says and explain it simply, in a few sentences. ${this.languageNote()})`,
+      maxTokens: deep ? 700 : 220,
+      prompt: deep
+        ? `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you, ignore it. They want real help. Work it out carefully:\n1. What is on the screen: the app, and the part that matters (an error, a dialog, code, a form). Quote the exact words of any error or message.\n2. What it means, in plain words, and the most likely cause.\n3. How to solve it: concrete numbered steps they can follow (where to click, what to type or change). If you can't be sure, say what to check first.\nBe precise and useful; a light touch of your personality only in the first or last line. Plain text, numbered steps allowed, no markdown symbols. ${this.languageNote()})`
+        : `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you. Answer about what you really see, in character. If they ask you to read something (an error, a message, code), quote what it actually says and explain it simply, in a few sentences. ${this.languageNote()})`,
     });
     if (!res.ok) {
       const model = String(res.model || '…').replace(/:latest$/, '');
@@ -776,6 +794,7 @@ export class Chat {
     if (game) return { kind: 'game', game };
     const memo = MEMO_ASK.exec(text)?.[1]?.trim();
     if (memo) return { kind: 'memo', text: memo };
+    if (this.look && LOOK_HELP.test(text)) return { kind: 'look', deep: true };
     if (this.look && (LOOK_ASK.test(text) || LOOK_READ.test(text))) return { kind: 'look' };
     const pc = this.askedPc(text, count);
     if (pc) return pc;
@@ -1569,6 +1588,19 @@ export class Chat {
     return true;
   }
 
+  // someone else came to the PC, or you're back (faceid.js): what was said stays with who said it
+  newPerson() {
+    this.history = [];
+    this.seen = null;
+  }
+
+  // a visitor telling her who they are: "sou a irmã dele", "me chamo Ana"
+  visitorName(text) {
+    if (!this.visitor || this.visitor.name) return;
+    const m = /(?:^|[\s,])(?:eu\s+)?(?:sou|me\s+chamo|meu\s+nome\s+(?:é|e))\s+(?:a\s+|o\s+)?((?:irm[ãa]o?|m[ãa]e|pai|namorad[oa]|esposa|marido|filh[oa]|amig[oa]|prim[oa]|ti[oa]|av[óô])(?:\s+d(?:ele|o\s+\p{L}+))?|\p{Lu}\p{L}+)/u.exec(text);
+    if (m) this.visitor.name = m[1].replace(/\s+d(?:ele|o\s+\p{L}+)$/u, '').trim();
+  }
+
   // What the user made her (custom.js): their name, how they want her, what to remember.
   personal() {
     const { userName, persona, memories = [] } = this.brain.custom || {};
@@ -1577,6 +1609,7 @@ export class Chat {
       const who = this.visitor.name ? `the user's ${this.visitor.name.replace(/^(minha|meu)\s+/i, '')}` : 'someone you don\'t know';
       return [
         `Right now you are NOT talking with ${userName || 'your user'} (the person you live with) but with ${who}, who is at their PC.`,
+        `Never call them ${userName || 'by your user\'s name'}, and never talk as if they were ${userName || 'your user'}. ${this.visitor.name ? '' : 'If it comes up naturally, ask who they are.'}`,
         `Be friendly and polite with them, but reserved, like with a guest: not the closeness you have with ${userName || 'your user'}.`,
         `Never share anything about ${userName || 'your user'}: no diary, no memories, nothing of what they do on the PC, their files, habits, plans or conversations. If asked, say kindly it isn't yours to tell.`,
       ];
@@ -1605,7 +1638,7 @@ export class Chat {
 
   // Her language, in it, for right by the message (above).
   languageNote() {
-    const recent = (this.panel?.recent || []).slice(-6).map((r) => `"${r.line.replace(/\s+/g, ' ').slice(0, 110)}"`);
+    const recent = (this.panel?.recent || []).slice(-10).map((r) => `"${r.line.replace(/\s+/g, ' ').slice(0, 110)}"`);
     return (IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en).now
       + (recent.length ? `\nYou said these lately: ${recent.join(' / ')}. Say something new: not the same idea, not the same words or jokes.` : '');
   }
@@ -1614,18 +1647,40 @@ export class Chat {
   // feels about you right now, and what she's asked to do with the picture.
   lookPersona() {
     const lang = IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en;
+    // what she knows of you: one thing, now and then (always the same five made every line about them)
+    const known = this.memory && !this.visitor && Math.random() < 0.3 ? [pick(this.memory.summary(8))].filter(Boolean) : [];
     return [
       `You are Capri, the personality construct from Project Capricorn (Cyberpunk: Edgerunners, season 2): dozens of minds fused into one digital ghost, living on the user's desktop as a small glitchy figure.`,
       'How you talk: playful, a little mischievous and teasing, warm underneath, never cruel. Night City slang now and then (choom, preem, nova, gonk), not in every sentence.',
       'Rules: one or two short sentences of plain text, no markdown, no lists, no emoji, no tags. Stay in character. Talk to the user, never describe the picture like a report.',
       'Ask the user a question only now and then (one line in four at most); mostly just comment, tease or react.',
       'Never read out anything private you might see (passwords, bank details, private messages, addresses): if there is some, just tease them about being busy.',
-      ...(this.memory && !this.visitor ? this.memory.summary(5).map((l) => `What you know about them — ${l}. (Only when it fits.)`) : []),
+      ...known.map((l) => `Something you know about them — ${l}. (Only if it really fits; usually leave it out.)`),
       ...this.personal(),
       ...(this.bond ? [this.bond.persona()] : []),
       ...[this.heart?.persona(), this.bond?.moodLine()].filter(Boolean),
       lang.last,
     ].join('\n');
+  }
+
+  // when you ask for real help with your screen: still her, but careful, clear and complete
+  helpPersona() {
+    const lang = IN_LANGUAGE[this.brain.lang] || IN_LANGUAGE.en;
+    return [
+      'You are Capri, a playful digital ghost who lives on the user\'s desktop, and right now their sharp, patient tech helper.',
+      'You see a picture of their screen. Read it carefully before answering: app names, error texts, line numbers, buttons.',
+      'Answer like a skilled friend sitting next to them: precise, practical, no filler, no guessing presented as fact.',
+      'Never read out anything private (passwords, bank details, private messages).',
+      lang.last,
+    ].join('\n');
+  }
+
+  // a line of hers (her AI, on her own) made ready: one idea, and nothing like what she said lately.
+  // null: better left unsaid.
+  fresh(text) {
+    const line = oneIdea(clean(text).replace(/^["“«]\s*|\s*["”»]$/g, ''));
+    if (!line) return null;
+    return stale(line, (this.panel?.recent || []).map((r) => r.line)) ? null : line;
   }
 
   // Who she is, how she talks, and what's going on right now.

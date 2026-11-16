@@ -161,7 +161,7 @@ test('her chat closes by itself after a while, never while you type, talk or she
   globalThis.setTimeout = (fn, ms) => { waited = ms; return real(() => {}, 0); };
   c.idle();
   globalThis.setTimeout = real;
-  assert.equal(waited, 45000);
+  assert.equal(waited, 35000); // 8 s + 45 ms a character, up to 40 s
   void at;
 });
 

@@ -42,12 +42,31 @@ test('a face clearly not yours, but yours never left the picture: she waits long
   await see(good(0.1));
   await see(good(0.9));
   assert.equal(f.state, 'owner');
-  f.doubt.since -= 20000; // 20 s of it
+  f.doubt.since -= 10000; // 10 s of it
   await see(good(0.9));
   assert.equal(f.state, 'owner');
-  f.doubt.since -= 30000; // 50 s, never a match of you: someone else after all
+  f.doubt.since -= 12000; // 22 s, never a match of you: someone else after all
   await see(good(0.9));
   assert.equal(f.state, 'stranger');
+});
+
+test('someone only half like you (a sister), never clearly you: someone else, and you back only on clear looks', async () => {
+  const { f, camera, see } = await world();
+  camera.state.seen = Date.now() - 60000;
+  await see(good(0.1));
+  await see(good(0.56));
+  assert.equal(f.state, 'owner', 'a bad angle of you, maybe');
+  f.unsure.since -= 26000;
+  await see(good(0.56));
+  f.doubt.since -= 25000;
+  await see(good(0.56));
+  assert.equal(f.state, 'stranger');
+  await see(good(0.46)); // like you, not clearly you
+  assert.equal(f.state, 'stranger');
+  await see(good(0.1));
+  assert.equal(f.state, 'stranger', 'one clear look is not enough');
+  await see(good(0.1));
+  assert.equal(f.state, 'owner');
 });
 
 test('you left the picture and someone else sat down: a stranger after a few seconds', async () => {

@@ -41,7 +41,7 @@ import { Pc } from './pc.js';
 import { Care } from './care.js';
 import { Breaks } from './breaks.js';
 import { linesFor } from './lines.js';
-import { pick, fmt, reducedMotion } from './util.js';
+import { pick, fmt, reducedMotion, inLang } from './util.js';
 
 const host = window.host;
 
@@ -146,7 +146,7 @@ async function boot() {
   };
   const onChip = () => Boolean(chip.visible && mouse && chip.contains(mouse.x, mouse.y, 0));
   const refreshHit = () => {
-    if (capri.dragging) return setInteractive(true);
+    if (capri.dragging || capri.pressing) return setInteractive(true); // held: until you let go, wherever the pointer goes
     if (!mouse) return setInteractive(false);
     const r = panel.rect();
     const onPanel = r && mouse.x >= r.left && mouse.x <= r.right && mouse.y >= r.top && mouse.y <= r.bottom;
@@ -356,7 +356,9 @@ async function boot() {
 
   // Clicking her: what's going on, or she offers to talk. Sulking, she turns her back on you.
   // About to close one of your other AIs' pages, she leaves it.
+  panel.asleep = () => capri.mode === 'sleep' || capri.dormant === true;
   capri.onClick = () => {
+    capri.wake(true); // a click on her: you woke her
     if (play.onClick()) return; // one poke too many: she answers that instead
     if (jealousy.spare()) return;
     if (panel.visible) panel.hide();
@@ -387,6 +389,7 @@ async function boot() {
       face = 'many';
       feel = 'angry';
       capri.refuseUntil = now + 25000;
+      capri.refusedOnce = false;
       bond.lose(1);
       if (mouse) capri.zap(mouse.x, mouse.y);
     } else if (how === 'ledge') line = brain.line('thrown.ledge');
@@ -417,6 +420,14 @@ async function boot() {
     capri.refuseUntil = 0;
   };
   capri.onDodge = () => panel.say({ kind: 'info', face: 'smug', line: brain.line('thrown.dodge'), hold: 2500 });
+  // still sulking about being thrown (25 s): a pout, not another teleport every click
+  let poutedAt = 0;
+  capri.onRefuse = () => {
+    if (performance.now() - poutedAt < 4000) return;
+    poutedAt = performance.now();
+    if (!capri.busy) capri.perform('huff', capri.towardCenter());
+    panel.say({ kind: 'info', face: 'aside', line: brain.line('thrown.dodge'), hold: 2200 });
+  };
 
   // Petted (your pointer back and forth over her mane): she purrs, says something now and then
   // (shy before she's attached to you), and it brings you a little closer. Too long and she's had
@@ -447,7 +458,7 @@ async function boot() {
     newStage = stage;
     capri.fondness = stage;
   };
-  const quiet = () => !capri.busy && !capri.act && !capri.dragging && !capri.stowed && !capri.dormant && !capri.hidden
+  const quiet = () => !capri.busy && !capri.act && !capri.dragging && !capri.stowed && !capri.dormant && !capri.hidden && capri.mode !== 'sleep'
     && capri.mode !== 'alert' && !chat.open && !guide.running && !panel.visible && ['stand', 'sit'].includes(capri.stance);
   // two hours at your PC without a real break: she tells you to get up (breaks.js)
   const breaks = new Breaks({ host, panel, brain, capri, pc, quiet });
@@ -753,7 +764,25 @@ async function boot() {
         panel.say({ kind: 'done', face: 'look', line: `${e}\n${said}`, hold: 12000 });
       }, 2500);
     }
+    const slept = heart.sleptAt ? Date.now() - heart.sleptAt : 0;
     const { cranky } = heart.woken();
+    // a good long sleep: now and then, she tells you what she dreamed (her local AI, from something of yours)
+    if (!cranky && !later.length && slept > 25 * 60000 && Math.random() < 0.4 && !light.on) {
+      setTimeout(async () => {
+        const topic = chat.visitor ? null : memory.topic();
+        const prompt = [
+          'You just woke up from a nap. Tell the user, in one or two short sentences, a dream you had: you are a digital ghost, so it is a strange, funny, glitchy Night City kind of dream.',
+          topic ? `It had something to do with ${topic.label} (${topic.kind}), which they like.` : 'It can be about anything.',
+          'Start like someone still waking up ("I dreamed…"). Plain text.',
+          chat.languageNote(),
+        ].join('\n');
+        const res = await host.localSay({ persona: chat.lookPersona(), prompt, maxTokens: 90, temperature: 1 }).catch(() => null);
+        const line = res?.ok && inLang(res.text, brain.lang) ? chat.fresh(res.text) : null;
+        if (!line || chat.open || guide.running || panel.visible || capri.mode === 'sleep') return;
+        capri.perform('stretch', capri.towardCenter());
+        panel.say({ kind: 'idle', face: 'look', line, hold: Math.min(10000, 3000 + line.length * 60) });
+      }, 3500);
+    }
     if (!cranky) return;
     const lines = brain.t.energy?.woken?.[cranky];
     setTimeout(() => {
