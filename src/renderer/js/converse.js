@@ -52,7 +52,9 @@ export class Converse {
   saw(msg) {
     if (!msg?.line || msg.guide || msg.actions?.length || msg.chat || msg.reply || msg.kind === 'alert' || msg.kind === 'chat') return;
     if (!/\?["”»)]?\s*$/.test(msg.line.trim())) return;
-    this.listen(msg.line);
+    // as long as her question is on screen
+    const shown = this.panel.current;
+    this.listen(msg.line, { until: () => this.panel.current === shown && this.panel.visible });
   }
 
   ready() {
@@ -62,12 +64,15 @@ export class Converse {
     return true;
   }
 
-  // her question on screen: a few seconds of listening for an answer
-  async listen(question) {
-    if (!this.ready() || (this.chat.open && !this.talking)) return;
-    // not every question of hers: the microphone opens at most every 8 minutes, unless you're talking
-    if (!this.talking && Date.now() - this.lastListen < 8 * 60000) return;
+  // her question on screen, or her chat open: the microphone stays open as long as it's there
+  // (`until`), and what you say to her (her name in it) is your answer. Nothing said: nothing
+  // recorded beyond the moment, nothing sent.
+  async listen(question, { until = null } = {}) {
+    if (!this.ready() || (this.chat.open && !until)) return;
+    // her questions on her own: the microphone opens at most every 8 minutes; her chat: always
+    if (!until && Date.now() - this.lastListen < 8 * 60000) return;
     this.lastListen = Date.now();
+    const open = until || (() => false);
     this.listening = true;
     let stream;
     try {
@@ -78,56 +83,72 @@ export class Converse {
     }
     const ear = this.ear();
     let ctx = null;
-    let spokeFor = 0;
-    const chunks = [];
+    let heard = null;
+    const started = Date.now();
     try {
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
       ctx.createMediaStreamSource(stream).connect(analyser);
-      const buf = new Float32Array(analyser.fftSize);
-      const started = performance.now();
-      let spoke = 0;
-      let quietSince = 0;
-      recorder.start(250);
-      spokeFor = await new Promise((resolve) => {
-        const watch = setInterval(() => {
-          analyser.getFloatTimeDomainData(buf);
-          const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length);
-          const now = performance.now();
-          if (rms > QUIET) {
-            spoke = spoke || now;
-            quietSince = now;
-          }
-          const done = spoke ? now - quietSince > SILENCE_MS || now - started > MAX_MS : now - started > WAIT_MS;
-          if (done || !this.on) {
-            clearInterval(watch);
-            resolve(spoke ? quietSince - spoke : 0);
-          }
-        }, 100);
-      });
-      const stopped = new Promise((r) => { recorder.onstop = r; });
-      recorder.stop();
-      await stopped;
+      // still worth listening: her question (or chat) still there (a first few seconds at least),
+      // her mic shortcut not in use, and her ears on
+      const going = () => this.on && !this.paused && !this.mic?.rec && (open() || Date.now() - started < WAIT_MS) && (!until || open());
+      for (let tries = 0; tries < 40 && going(); tries++) {
+        const audio = await this.utterance(stream, analyser, going);
+        if (!audio) break; // it closed, or nobody spoke
+        const res = await this.host.transcribe(audio, this.brain.lang).catch(() => null);
+        if (res?.error === 'nokey') { this.noKey = true; break; }
+        const text = String(res?.text || '').trim();
+        if (text && !PHANTOM.test(text) && addressed(text)) { heard = text; break; }
+        // the TV, someone else, words without her name: she goes on listening
+      }
     } catch {
-      spokeFor = 0; // something in the way (the microphone taken): as if nobody answered
+      heard = null; // something in the way (the microphone taken): as if nobody answered
     } finally {
       // whatever happened: the microphone off, her ear gone, listening over
       stream.getTracks().forEach((tr) => tr.stop());
       ctx?.close().catch(() => {});
       ear.remove();
       this.listening = false;
+      this.hearing = false;
     }
-    // a cough, a click: not an answer
-    if (spokeFor < 450) return this.unanswered(question);
-    const audio = await new Blob(chunks, { type: 'audio/webm' }).arrayBuffer();
-    const res = await this.host.transcribe(audio, this.brain.lang).catch(() => null);
-    if (res?.error === 'nokey') this.noKey = true;
-    const text = String(res?.text || '').trim();
-    if (!text || PHANTOM.test(text) || !addressed(text)) return this.unanswered(question);
-    return this.answered(question, text);
+    if (heard) return this.answered(question, heard);
+    return this.unanswered(question);
+  }
+
+  // one thing said: waits for a voice (as long as `going`), records until you stop. The recording,
+  // or null (closed, or only a cough).
+  async utterance(stream, analyser, going) {
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const buf = new Float32Array(analyser.fftSize);
+    let spoke = 0;
+    let quietSince = 0;
+    recorder.start(250);
+    const spokeFor = await new Promise((resolve) => {
+      const watch = setInterval(() => {
+        analyser.getFloatTimeDomainData(buf);
+        const rms = Math.sqrt(buf.reduce((sum, v) => sum + v * v, 0) / buf.length);
+        const now = performance.now();
+        if (rms > QUIET) {
+          spoke = spoke || now;
+          quietSince = now;
+          this.hearing = true; // her chat doesn't close on you mid-sentence (chat.js)
+        }
+        const done = spoke ? now - quietSince > SILENCE_MS || now - spoke > MAX_MS : !going();
+        if (done) {
+          clearInterval(watch);
+          resolve(spoke ? quietSince - spoke : 0);
+        }
+      }, 100);
+    });
+    const stopped = new Promise((r) => { recorder.onstop = r; });
+    recorder.stop();
+    await stopped;
+    this.hearing = false;
+    if (spokeFor < 450) return going() ? this.utterance(stream, analyser, going) : null; // a cough, a click: listening on
+    return new Blob(chunks, { type: 'audio/webm' }).arrayBuffer();
   }
 
   // you answered: in her chat, as a reply to her question
@@ -155,11 +176,14 @@ export class Converse {
     }, 1500);
   }
 
-  // her answer in a talk you started by voice: if it asks you something, she listens again
+  // her answer in her chat: she listens again, as long as her chat is open
   onAnswer(answer) {
-    if (!this.talking) return;
-    // a talk out loud: after each answer of hers, a few seconds of listening (her name still needed)
-    setTimeout(() => this.listen(answer), 600);
+    setTimeout(() => this.listen(answer, { until: () => this.chat.open }), 600);
+  }
+
+  // her chat just opened (you, or her): she listens while it's open
+  onOpen(opening) {
+    setTimeout(() => this.listen(opening || '', { until: () => this.chat.open }), 800);
   }
 
   onClose() {

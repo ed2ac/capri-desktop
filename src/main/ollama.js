@@ -77,8 +77,16 @@ function warm(model) {
   fetch(`${base()}/api/generate`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model, keep_alive: '45m' }),
+    body: JSON.stringify({ model, keep_alive: stay }),
   }).catch(() => {});
+}
+
+// how long her model stays on the graphics card after each use (main.js decides): plugged in and not
+// in light mode, for good (-1: loading it again, gigabytes from the disk, is what stalls the PC);
+// otherwise a short while
+let stay = '45m';
+function setStay(value) {
+  stay = value;
 }
 
 // Her answer, streamed: onDelta(piece) as it comes, resolves with all of it.
@@ -92,7 +100,7 @@ async function chat({ model, messages, options, keepAlive }, onDelta, signal) {
       model,
       messages,
       stream: true,
-      keep_alive: keepAlive || '45m', // she stays loaded a good while: loading her again is what stalls the PC
+      keep_alive: keepAlive ?? stay, // she stays loaded (setStay): loading her again is what stalls the PC
       ...(thinks && { think: 'low' }),
       options: { temperature: 0.85, num_predict: thinks ? 1200 : 240, ...options },
     }),
@@ -146,4 +154,4 @@ async function canSee(model) {
   return !Array.isArray(info.capabilities) || info.capabilities.includes('vision');
 }
 
-module.exports = { base, models, isCloud, account, freeModels, warm, chat, canSee, unload };
+module.exports = { base, models, isCloud, account, freeModels, warm, chat, canSee, unload, setStay };

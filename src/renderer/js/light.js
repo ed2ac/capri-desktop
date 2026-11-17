@@ -12,23 +12,28 @@ const HEAVY_CPU = 70;     // %, this long: the PC is busy, she lightens up…
 const HEAVY_FOR = 20000;
 const CALM_CPU = 50;      // …until it's under this, this long
 const CALM_FOR = 45000;
-const LAG_MS = 250;       // her own clock this late, a few times running: she's being starved too
+const LAG_MS = 400;       // her own clock this late, several times in half a minute: she's being starved too
+const LAG_COUNT = 5;
+const SETTLE_MS = 4 * 60000; // her first minutes (and Windows' after a boot or a wake-up) are always slow: not counted
 
 export class Light {
   constructor({ capri, panel, brain, host, camera, gestures, hearing, speech, look, converse, life, face, hands }) {
     Object.assign(this, { capri, panel, brain, host, camera, gestures, hearing, speech, look, converse, life, face, hands });
     this.on = false;
     this.why = null;
-    this.rules = { games: true, claude: false, heavy: false, battery: false, always: false };
+    this.rules = { games: true, claude: false, heavy: true, battery: true, always: false };
     this.cpuHigh = 0;
     this.cpuLow = 0;
     this.lagged = [];
+    this.bornAt = Date.now();
     this.battery = null;
     // her own heartbeat: when a 1-second timer comes this late, the PC (or she) is overloaded
     let expected = performance.now() + 1000;
     setInterval(() => {
       const now = performance.now();
-      if (now - expected > LAG_MS) this.lagged = [...this.lagged.filter((t) => now - t < 30000), now];
+      // a long gap: the PC was asleep, not overloaded; and after it, a few minutes of grace too
+      if (now - expected > 20000) this.bornAt = Date.now();
+      else if (now - expected > LAG_MS && Date.now() - this.bornAt > SETTLE_MS) this.lagged = [...this.lagged.filter((t) => now - t < 30000), now];
       expected = now + 1000;
     }, 1000);
     navigator.getBattery?.().then((b) => { this.battery = b; }).catch(() => {});
@@ -54,8 +59,9 @@ export class Light {
       else if (cpu != null) this.cpuHigh = 0;
       if (cpu != null && cpu < CALM_CPU) this.cpuLow = this.cpuLow || now;
       else this.cpuLow = 0;
-      const lagging = this.lagged.length >= 3;
-      const busy = lagging || (this.cpuHigh && now - this.cpuHigh > HEAVY_FOR);
+      const settling = now - this.bornAt < SETTLE_MS; // just started, or the PC just woke up
+      const lagging = this.lagged.length >= LAG_COUNT;
+      const busy = !settling && (lagging || (this.cpuHigh && now - this.cpuHigh > HEAVY_FOR));
       // light because of it: stays light until the PC has been calm a while (no flapping)
       if (busy || (this.why === 'heavy' && !(this.cpuLow && now - this.cpuLow > CALM_FOR))) return 'heavy';
     }
@@ -82,7 +88,7 @@ export class Light {
     if (this.look) this.look.light = on;
     if (this.converse) this.converse.light = on;
     if (this.life) this.life.light = on;
-    if (on) this.host.localUnload?.().catch(() => {}); // Ollama's model off the graphics card
+    this.host.lightState?.(on); // main.js: her AI let go of the graphics card (or kept on it again)
     // a word about it, when it's not a game (pc.js has her reactions to games)
     if (on && why !== 'games' && Date.now() - (this.saidAt || 0) > 30 * 60000) {
       this.saidAt = Date.now();

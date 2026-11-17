@@ -73,7 +73,14 @@ async function startOllama() {
   const run = (file, args) => spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
   // only its server, hidden: the Ollama app opens a window (a sign-in for its cloud models) that
   // a local model doesn't need. The app only if there's no server program to run.
-  if (fs.existsSync(cli)) run(cli, ['serve']);
+  // On Windows, through PowerShell's Start-Process: the server gets a console of its own, hidden,
+  // which the programs it runs (llama-server, each time a model loads) share. Started "detached"
+  // instead, it would have no console at all, and each of those would flash a terminal window open.
+  // (And it's on its own: it keeps running when she quits.)
+  if (fs.existsSync(cli) && WIN) {
+    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Start-Process -FilePath '${cli.replace(/'/g, "''")}' -ArgumentList 'serve' -WindowStyle Hidden`],
+      { windowsHide: true, stdio: 'ignore' }).on('error', () => run(cli, ['serve']));
+  } else if (fs.existsSync(cli)) run(cli, ['serve']);
   else if (fs.existsSync(app)) run(app, []);
   else run('ollama', ['serve']);
   for (let i = 0; i < 40; i++) {

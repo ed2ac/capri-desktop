@@ -1,5 +1,6 @@
 'use strict';
 
+require('./hide'); // first: every program she runs, hidden (no terminal flashing open)
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
@@ -555,6 +556,29 @@ function cloudStart() {
   cloudTimers.push(setInterval(() => live().catch(() => {}), 3 * 60000));
   cloudTimers.push(setInterval(() => played(false).catch(() => {}), 30 * 60000));
   cloudTimers.push(setInterval(() => headlines().catch(() => {}), 30 * 60000));
+}
+
+// ---- Her local AI on the graphics card: kept loaded while plugged in and not in light mode (no
+// reloading stalls when she reads your screen); on battery or light, let go after a little while ----
+let lightOn = false;
+let gpuKept = false;
+async function gpuPolicy() {
+  const keep = !powerMonitor.isOnBatteryPower() && !lightOn;
+  ollama.setStay(keep ? -1 : '10m');
+  if (keep === gpuKept) return;
+  gpuKept = keep;
+  const model = await localModel(config.load()).catch(() => null);
+  if (!model) return;
+  if (keep) ollama.warm(model); // loaded now, while nothing's waiting on it
+  else ollama.unload(model);
+}
+
+// her window drawn by the integrated graphics (Intel), the NVIDIA left to her AI: the two don't fight
+// over one card (Windows' per-app graphics preference; it applies from her next start)
+function preferLowPowerGpu() {
+  if (process.platform !== 'win32' || DEV) return;
+  const exe = app.getPath('exe');
+  execFile('reg.exe', ['add', 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences', '/v', exe, '/t', 'REG_SZ', '/d', 'GpuPreference=1;', '/f'], { windowsHide: true, timeout: 10000 }, () => {});
 }
 
 // ---- Her updates (electron-updater, from GitHub releases): looked for at start and every 6 hours;
@@ -1851,7 +1875,7 @@ function localSay({ persona, prompt, images, history = [], maxTokens = 160, temp
     const user = { role: 'user', content: prompt, ...(images && { images }) };
     const messages = [{ role: 'system', content: persona }, ...history, user];
     try {
-      const text = await ollama.chat({ model, messages, options: { num_predict: maxTokens, temperature }, keepAlive: '30m' }, () => {}, AbortSignal.timeout(timeout));
+      const text = await ollama.chat({ model, messages, options: { num_predict: maxTokens, temperature }, }, () => {}, AbortSignal.timeout(timeout));
       return { ok: true, text, model, local: true };
     } catch (err) {
       return { ok: false, error: err.message, code: err.code || null, model };
@@ -1973,7 +1997,7 @@ function registerIpc() {
         const online = !['ollama', 'claude'].includes(cfg.provider);
         const local = online && !abort.signal.aborted && !streamed ? await localModel(cfg) : null;
         if (!local) throw err;
-        text = await ollama.chat({ model: local, messages, keepAlive: '30m' }, send, abort.signal);
+        text = await ollama.chat({ model: local, messages }, send, abort.signal);
       }
       if (cfg.provider === 'claude') saveMemory({ claude: llm.claudeMemory() });
       return { ok: true, text };
@@ -2162,6 +2186,11 @@ function registerIpc() {
   ipcMain.on('settings:open', () => openSettings());
   // light mode: Ollama's model off the graphics card (it loads again when she needs it)
   ipcMain.handle('local:unload', async () => { await ollama.unload(await localModel(config.load())); return true; });
+  // light mode on or off (light.js): her AI's place on the graphics card follows (gpuPolicy)
+  ipcMain.on('light:state', (_e, on) => {
+    lightOn = Boolean(on);
+    gpuPolicy().catch(() => {});
+  });
   // "me avisa quando o X entrar ao vivo": added, removed, listed
   ipcMain.handle('lives:set', async (_e, { op, site, name } = {}) => {
     const lives = require('./lives');
@@ -2708,6 +2737,13 @@ function main() {
     updatesStart(); // her new versions, asking first
     psnStart(); // your PS5, if connected
     cloudStart(); // her cloud (PS5 through Discord, the news), if connected
+    // her AI kept on the graphics card while plugged in; her window on the integrated one
+    powerMonitor.on('on-ac', () => gpuPolicy().catch(() => {}));
+    powerMonitor.on('on-battery', () => gpuPolicy().catch(() => {}));
+    setTimeout(() => gpuPolicy().catch(() => {}), 60000);
+    preferLowPowerGpu();
+    // 0.8.4: light mode on battery on for everyone once (you use her plugged in; off the plug, she saves it)
+    if (!config.load().batteryOn) config.save({ batteryOn: true, lightMode: { ...(config.load().lightMode || {}), battery: true } });
     // 0.8.2: "when the processor runs hot" on for everyone once (she lightens up by herself when the PC is busy)
     if (!config.load().heavyOn) config.save({ heavyOn: true, lightMode: { ...(config.load().lightMode || {}), heavy: true } });
     spotifyStart(); // your Spotify, if connected

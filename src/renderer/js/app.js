@@ -815,6 +815,7 @@ async function boot() {
     return shown;
   };
   chat.onAnswered = (answer) => converse.onAnswer(answer);
+  chat.onOpened = (opening) => converse.onOpen(opening); // her microphone open while her chat is
   // your GitHub (main github.js): a CI run failed (Claude can look into it), a review, a mention
   // something of hers on screen you may be answering (a question, buttons, her chat): what can wait, waits
   const whenFree = (fn, tries = 20) => {

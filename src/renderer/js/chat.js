@@ -433,6 +433,7 @@ export class Chat {
     }
     this.open = true;
     this.sessionFrom = this.history.length; // what's said from here: for her memory when it closes
+    this.onOpened?.(opening);
     this.watchIdle();
     this.idle();
     setTimeout(() => this.panel.chatInput.focus(), 150); // once the overlay has the keyboard
@@ -469,7 +470,8 @@ export class Chat {
     if (!this.open) return;
     const input = this.panel.chatInput;
     const typing = (input?.value || '').trim() || Date.now() - (this.typedAt || 0) < 20000;
-    const talking = this.turn || this.mic?.rec || this.mic?.asking || this.converse?.listening;
+    // her microphone open while her chat is (converse.js) doesn't keep it open: only you speaking does
+    const talking = this.turn || this.mic?.rec || this.mic?.asking || this.converse?.hearing;
     const choosing = this.panel.current?.actions?.length && !this.choiceWaited;
     if (typing || talking) return this.idle(15000);
     if (choosing) { // her buttons: a little longer, once

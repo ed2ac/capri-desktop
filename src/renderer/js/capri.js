@@ -609,7 +609,8 @@ export class Capri {
 
     // resting on the taskbar: a little while after anything happens, she goes back to sit on it
     // (how long first: her life, life.js, says; she's out and about longer when she's lively)
-    if (this.restOn === 'taskbar' && this.mode === 'idle' && this.stance === 'stand' && !this.walking
+    // (not with a question of hers on screen: it'd go with her)
+    if (this.restOn === 'taskbar' && this.mode === 'idle' && this.stance === 'stand' && !this.walking && !this.holding?.()
       && now - this.lastActivity > (this.homeAfter?.() ?? 6000) && now > this.nextHome) {
       this.nextHome = now + 8000;
       this.goHome();
@@ -630,6 +631,7 @@ export class Capri {
 
   // What she does with herself when nobody needs her.
   wanderStep() {
+    if (this.holding?.()) return; // a question of hers on screen: she stays put
     if (!this.wander || this.stance === 'peek') {
       if (this.stance !== 'peek') this.flourish();
       return;

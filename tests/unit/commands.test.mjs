@@ -139,7 +139,7 @@ test('her chat closes by itself after a while, never while you type, talk or she
   c.idleClose();
   assert.equal(hidden, 1, 'text in the box: stays');
   panel.chatInput.value = '';
-  c.converse = { listening: true };
+  c.converse = { hearing: true };
   c.idleClose();
   assert.equal(hidden, 1, 'listening to you: stays');
   c.converse = null;

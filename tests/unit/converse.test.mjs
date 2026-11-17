@@ -8,6 +8,7 @@ function world() {
   c.configure({ converse: true, micAsked: true });
   const heard = [];
   c.listen = (q) => heard.push(q);
+  c.panel.current = null;
   return { c, heard };
 }
 
@@ -34,15 +35,17 @@ test('what Whisper makes up out of silence isn\'t an answer', () => {
   for (const t of ['Tô sim, tá linda hoje', 'Não, tá nublado']) assert.doesNotMatch(t, CONVERSE_PHANTOM, t);
 });
 
-test('a talk out loud goes on: after each answer of hers, she listens again', async () => {
-  const { c, heard } = world();
+test('her chat open: she listens as long as it is, again after each answer of hers', async () => {
+  const { c } = world();
+  const calls = [];
+  c.listen = (q, o) => calls.push({ q, until: o?.until });
+  c.onOpen('Oi, choom!');
   c.onAnswer('Que legal!');
-  await new Promise((r) => { setTimeout(r, 700).ref?.(); });
-  assert.equal(heard.length, 0); // not a talk out loud yet
-  c.talking = true;
-  c.onAnswer('Que legal!');
-  await new Promise((r) => { setTimeout(r, 700).ref?.(); });
-  assert.equal(heard.length, 1);
+  await new Promise((r) => { setTimeout(r, 900).ref?.(); });
+  assert.deepEqual(calls.map((x) => x.q), ['Que legal!', 'Oi, choom!']);
+  assert.equal(calls[0].until(), false, 'her chat closed: she stops');
+  c.chat.open = true;
+  assert.equal(calls[0].until(), true);
 });
 
 test('only what is said to her counts: her name somewhere in it, the whole of it kept', async () => {

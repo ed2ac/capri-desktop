@@ -132,7 +132,7 @@ let claudeStarted = false; // each message after the first continues the same co
 
 function claudeVersion() {
   return new Promise((resolve, reject) => {
-    execFile('claude', ['--version'], { shell: process.platform === 'win32', timeout: 10000 }, (err, out) => (
+    execFile('claude', ['--version'], { shell: process.platform === 'win32', windowsHide: true, timeout: 10000 }, (err, out) => (
       err ? reject(new Error('Claude Code not found (is `claude` on your PATH?)')) : resolve(out.trim())));
   });
 }
